@@ -1,0 +1,255 @@
+import moss.model
+
+public func constantKind(tag: Int): String {
+    return match tag {
+        0 => "Unusable",
+        1 => "Utf8",
+        3 => "Integer",
+        4 => "Float",
+        5 => "Long",
+        6 => "Double",
+        7 => "Class",
+        8 => "String",
+        9 => "Fieldref",
+        10 => "Methodref",
+        11 => "InterfaceMethodref",
+        12 => "NameAndType",
+        15 => "MethodHandle",
+        16 => "MethodType",
+        17 => "Dynamic",
+        18 => "InvokeDynamic",
+        19 => "Module",
+        20 => "Package",
+        _ => "Unknown",
+    }
+}
+
+func constantJson(input: String, file: moss.model.ClassFile,
+    index: Int): Result<String, moss.model.Diagnostic> {
+    let item = file.pool[index]
+    var text = "null"
+    var name = "null"
+    var owner = "null"
+    var type = "null"
+    var bits = "null"
+    var integer = "null"
+    var bootstrap = "null"
+    var referenceKind = "null"
+    var references = "[]"
+    if item.tag == 1 {
+        text = quoteUnits(units: item.text)
+    } else if item.tag == 7 || item.tag == 8 || item.tag == 16 || item.tag == 19 || item.tag == 20 {
+        text = textAt(file: file, index: item.first)
+        references = "[" + number(value: item.first) + "]"
+    } else if item.tag == 12 {
+        name = textAt(file: file, index: item.first)
+        type = textAt(file: file, index: item.second)
+        references = "[" + number(value: item.first) + "," + number(value: item.second) + "]"
+    } else if item.tag == 9 || item.tag == 10 || item.tag == 11 {
+        owner = classAt(file: file, index: item.first)
+        name = textAt(file: file, index: file.pool[item.second].first)
+        type = textAt(file: file, index: file.pool[item.second].second)
+        references = "[" + number(value: item.first) + "," + number(value: item.second) + "]"
+    } else if item.tag == 15 {
+        referenceKind = number(value: item.first)
+        references = "[" + number(value: item.second) + "]"
+    } else if item.tag == 17 || item.tag == 18 {
+        name = textAt(file: file, index: file.pool[item.second].first)
+        type = textAt(file: file, index: file.pool[item.second].second)
+        bootstrap = number(value: item.first)
+        references = "[" + number(value: item.second) + "]"
+    } else if item.tag == 3 || item.tag == 4 || item.tag == 5 || item.tag == 6 {
+        var pattern = moss.model.hex(value: item.first, digits: 8)
+        if item.tag == 5 || item.tag == 6 { pattern = pattern + moss.model.hex(value: item.second, digits: 8) }
+        bits = "\"" + pattern + "\""
+        if item.tag == 3 {
+            var value = item.first
+            if value >= 2147483648 { value = value - 4294967296 }
+            integer = number(value: value)
+        }
+    }
+    let raw = hexRange(input: input, region: item.bytes)?
+    return .Ok("{\"index\":" + number(value: index) + ",\"tag\":" + number(value: item.tag) +
+        ",\"kind\":\"" + constantKind(tag: item.tag) + "\",\"fileOffset\":" + number(value: item.bytes.offset) +
+        ",\"size\":" + number(value: item.bytes.length) + ",\"bytesHex\":\"" + raw +
+        "\",\"text\":" + text + ",\"owner\":" + owner + ",\"name\":" + name +
+        ",\"descriptor\":" + type + ",\"bitsHex\":" + bits + ",\"integerValue\":" + integer +
+        ",\"bootstrapIndex\":" + bootstrap + ",\"referenceKind\":" + referenceKind +
+        ",\"references\":" + references + "}")
+}
+
+func attributeJson(file: moss.model.ClassFile, item: moss.model.Attribute): String {
+    return "{\"name\":" + textAt(file: file, index: item.nameIndex) +
+        ",\"nameIndex\":" + number(value: item.nameIndex) +
+        ",\"headerOffset\":" + number(value: item.headerOffset) + ",\"body\":" + rangeJson(region: item.body) + "}"
+}
+
+private func attributesJson(file: moss.model.ClassFile,
+    attributes: [moss.model.Attribute]): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "[")?
+    var index = 0
+    while index < attributes.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        append(buffer: &output, text: attributeJson(file: file, item: attributes[index]))?
+        index = index + 1
+    }
+    append(buffer: &output, text: "]")?
+    return .Ok(finish(buffer: consume output))
+}
+
+private func codeJson(file: moss.model.ClassFile, code: moss.model.Code): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "{\"attributeOffset\":" + number(value: code.attributeOffset) +
+        ",\"maxStack\":" + number(value: code.maxStack) + ",\"maxLocals\":" + number(value: code.maxLocals) +
+        ",\"bytes\":" + rangeJson(region: code.bytes) + ",\"exceptions\":[")?
+    var index = 0
+    while index < code.exceptions.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        let item = code.exceptions[index]
+        append(buffer: &output, text: "{\"start\":" + number(value: item.start) +
+            ",\"end\":" + number(value: item.end) + ",\"handler\":" + number(value: item.handler) +
+            ",\"catchTypeIndex\":" + number(value: item.catchType) + ",\"catchType\":" +
+            classAt(file: file, index: item.catchType) + ",\"fileOffset\":" + number(value: item.fileOffset) + "}")?
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"lines\":[")?
+    index = 0
+    while index < code.lines.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        let item = code.lines[index]
+        append(buffer: &output, text: "{\"methodOffset\":" + number(value: item.offset) +
+            ",\"line\":" + number(value: item.line) + ",\"fileOffset\":" + number(value: item.fileOffset) + "}")?
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"locals\":[")?
+    index = 0
+    while index < code.locals.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        let item = code.locals[index]
+        append(buffer: &output, text: "{\"start\":" + number(value: item.start) +
+            ",\"length\":" + number(value: item.length) + ",\"slot\":" + number(value: item.slot) +
+            ",\"name\":" + textAt(file: file, index: item.nameIndex) +
+            ",\"descriptor\":" + textAt(file: file, index: item.descriptorIndex) +
+            ",\"genericSignature\":" + boolean(value: item.generic) +
+            ",\"fileOffset\":" + number(value: item.fileOffset) + "}")?
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"attributes\":" + attributesJson(file: file, attributes: code.attributes)? + "}")?
+    return .Ok(finish(buffer: consume output))
+}
+
+func memberJson(file: moss.model.ClassFile, item: moss.model.Member,
+    method: Bool): Result<String, moss.model.Diagnostic> {
+    var code = "null"
+    match item.code {
+        .Some(value) => { code = codeJson(file: file, code: value)? },
+        .None => {},
+    }
+    var identity = "null"
+    var methodIndex = "null"
+    var fieldIndex = "null"
+    if method {
+        identity = quoteText(text: moss.model.methodId(file: file, method: item))?
+        methodIndex = number(value: item.index)
+    } else {
+        fieldIndex = number(value: item.index)
+    }
+    return .Ok("{\"name\":" + textAt(file: file, index: item.nameIndex) +
+        ",\"descriptor\":" + textAt(file: file, index: item.descriptorIndex) +
+        ",\"methodId\":" + identity + ",\"methodIndex\":" + methodIndex +
+        ",\"fieldIndex\":" + fieldIndex + ",\"accessFlags\":" + number(value: item.flags) +
+        ",\"fileOffset\":" + number(value: item.fileOffset) + ",\"code\":" + code +
+        ",\"attributes\":" + attributesJson(file: file, attributes: item.attributes)? + "}")
+}
+
+func classJson(file: moss.model.ClassFile): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "{\"format\":\"jvm-class\",\"name\":" +
+        quoteUnits(units: moss.model.className(file: file)) +
+        ",\"major\":" + number(value: file.major) + ",\"minor\":" + number(value: file.minor) +
+        ",\"preview\":" + boolean(value: file.minor == 65535) +
+        ",\"accessFlags\":" + number(value: file.flags) +
+        ",\"superClass\":" + classAt(file: file, index: file.superClass) +
+        ",\"constantPoolCount\":" + number(value: file.pool.count) +
+        ",\"fieldCount\":" + number(value: file.fields.count) +
+        ",\"methodCount\":" + number(value: file.methods.count) + ",\"interfaces\":[")?
+    var index = 0
+    while index < file.interfaces.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        append(buffer: &output, text: classAt(file: file, index: file.interfaces[index]))?
+        index = index + 1
+    }
+    append(buffer: &output, text: "]}")?
+    return .Ok(finish(buffer: consume output))
+}
+
+func operandJson(item: moss.model.Operand): String {
+    return match item {
+        .Immediate(value) => "{\"kind\":\"immediate\",\"value\":" + number(value: value) + "}",
+        .Local(value) => "{\"kind\":\"local\",\"index\":" + number(value: value) + "}",
+        .Constant(value) => "{\"kind\":\"constant\",\"index\":" + number(value: value) + "}",
+        .Target(value) => "{\"kind\":\"target\",\"methodOffset\":" + number(value: value) + "}",
+        .ArrayType(value) => "{\"kind\":\"arrayType\",\"value\":" + number(value: value) + "}",
+        .Dimensions(value) => "{\"kind\":\"dimensions\",\"value\":" + number(value: value) + "}",
+        .Count(value) => "{\"kind\":\"count\",\"value\":" + number(value: value) + "}",
+        .DefaultTarget(value) => "{\"kind\":\"defaultTarget\",\"methodOffset\":" + number(value: value) + "}",
+        .SwitchTarget(key, target) => "{\"kind\":\"switchTarget\",\"key\":" + number(value: key) +
+            ",\"methodOffset\":" + number(value: target) + "}",
+    }
+}
+
+func instructionJson(input: String, file: moss.model.ClassFile, artifact: String, method: String,
+    item: moss.model.Instruction): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "{\"schemaVersion\":1,\"artifactId\":\"" + artifact +
+        "\",\"methodId\":\"" + method + "\",\"methodOffset\":" + number(value: item.methodOffset) +
+        ",\"fileOffset\":" + number(value: item.fileOffset) + ",\"size\":" + number(value: item.size) +
+        ",\"rawOpcode\":" + number(value: item.rawOpcode) + ",\"effectiveOpcode\":" + number(value: item.opcode) +
+        ",\"mnemonic\":\"" + item.mnemonic + "\",\"wide\":" + boolean(value: item.wide) +
+        ",\"bytesHex\":\"" + hexRange(input: input,
+            region: moss.model.ByteRange(offset: item.fileOffset, length: item.size))? +
+        "\",\"operands\":[")?
+    var index = 0
+    while index < item.operands.count {
+        if index != 0 { append(buffer: &output, text: ",")? }
+        append(buffer: &output, text: operandJson(item: item.operands[index]))?
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"constantReferences\":[")?
+    index = 0
+    var count = 0
+    while index < item.operands.count {
+        match item.operands[index] {
+            .Constant(value) => {
+                if count != 0 { append(buffer: &output, text: ",")? }
+                append(buffer: &output, text: constantJson(input: input, file: file, index: value)?)?
+                count = count + 1
+            },
+            _ => {},
+        }
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"branchTargets\":[")?
+    index = 0
+    count = 0
+    while index < item.operands.count {
+        let target: Int? = match item.operands[index] {
+            .Target(value) => .Some(value),
+            .DefaultTarget(value) => .Some(value),
+            .SwitchTarget(_, value) => .Some(value),
+            _ => .None,
+        }
+        match target {
+            .Some(value) => {
+                if count != 0 { append(buffer: &output, text: ",")? }
+                append(buffer: &output, text: number(value: value))?
+                count = count + 1
+            },
+            .None => {},
+        }
+        index = index + 1
+    }
+    append(buffer: &output, text: "],\"diagnostics\":[]}")?
+    return .Ok(finish(buffer: consume output))
+}

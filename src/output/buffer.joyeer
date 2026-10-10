@@ -1,0 +1,104 @@
+import moss.model
+
+public struct Buffer {
+    public var parts: [String]
+    public var bytes: Int
+}
+
+public func maximumOutputBytes(): Int {
+    return 8388608
+}
+
+public func buffer(): Buffer {
+    return Buffer(parts: [], bytes: 0)
+}
+
+public func append(buffer: inout Buffer, text: String): Result<Void, moss.model.Diagnostic> {
+    if buffer.bytes < 0 || buffer.bytes > maximumOutputBytes() ||
+        text.count > maximumOutputBytes() - buffer.bytes {
+        return .Err(moss.model.Diagnostic(code: "output.budget-exceeded", offset: -1,
+            context: "output", message: "serialized output exceeds the inclusive 8 MiB ceiling"))
+    }
+    &buffer.parts.append(element: text)
+    &buffer.bytes = buffer.bytes + text.count
+    return .Ok(())
+}
+
+public func finish(buffer: consuming Buffer): String {
+    return moss.model.joined(parts: consume buffer.parts)
+}
+
+public func quoteUnits(units: [Int]): String {
+    let printable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    var parts: [String] = ["\""]
+    var index = 0
+    while index < units.count {
+        var piece = ""
+        var count = 0
+        while index < units.count && count < 64 {
+            let unit = units[index]
+            if unit == 34 {
+                piece = piece + "\\\""
+            } else if unit == 92 {
+                piece = piece + "\\\\"
+            } else if unit >= 32 && unit <= 126 {
+                piece = piece + byteToString(value: printable[unit - 32])
+            } else {
+                piece = piece + "\\u" + moss.model.hex(value: unit, digits: 4)
+            }
+            index = index + 1
+            count = count + 1
+        }
+        &parts.append(element: piece)
+    }
+    &parts.append(element: "\"")
+    return moss.model.joined(parts: consume parts)
+}
+
+public func quoteText(text: String): Result<String, moss.model.Diagnostic> {
+    return .Ok(quoteUnits(units: moss.model.utf8Units(text: text)?))
+}
+
+func number(value: Int): String {
+    return moss.model.decimal(value: value)
+}
+
+func boolean(value: Bool): String {
+    if value { return "true" }
+    return "false"
+}
+
+public func hexRange(input: String, region: moss.model.ByteRange): Result<String, moss.model.Diagnostic> {
+    if region.offset < 0 || region.offset > input.count || region.length < 0 ||
+        region.length > input.count - region.offset {
+        return .Err(moss.model.Diagnostic(code: "output.invalid-range", offset: region.offset,
+            context: "bytes", message: "byte range lies outside input"))
+    }
+    var parts: [String] = []
+    var index = region.offset
+    let end = region.offset + region.length
+    while index < end {
+        var piece = ""
+        var count = 0
+        while index < end && count < 64 {
+            piece = piece + moss.model.hex(value: byteToInt(value: input[index]), digits: 2)
+            index = index + 1
+            count = count + 1
+        }
+        &parts.append(element: piece)
+    }
+    return .Ok(moss.model.joined(parts: consume parts))
+}
+
+func rangeJson(region: moss.model.ByteRange): String {
+    return "{\"fileOffset\":" + number(value: region.offset) + ",\"size\":" + number(value: region.length) + "}"
+}
+
+func textAt(file: moss.model.ClassFile, index: Int): String {
+    return quoteUnits(units: file.pool[index].text)
+}
+
+func classAt(file: moss.model.ClassFile, index: Int): String {
+    if index == 0 { return "null" }
+    return textAt(file: file, index: file.pool[index].first)
+}

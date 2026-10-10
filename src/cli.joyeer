@@ -1,0 +1,176 @@
+import moss.model
+
+public struct Options {
+    public let command: String
+    public let path: String
+    public let format: String
+    public let method: String
+    public let methodIndex: Int
+    public let descriptor: String
+    public let offset: Int
+    public let limit: Int
+    public let output: String
+    public let allowPreview: Bool
+    public let uncheckedStdout: Bool
+}
+
+public enum Command {
+    Help,
+    Version,
+    Analyze(Options),
+}
+
+private func usage(message: String): moss.model.Diagnostic {
+    return moss.model.Diagnostic(code: "cli.usage", offset: -1, context: "arguments", message: message)
+}
+
+private func value(args: [String], index: Int): Result<String, moss.model.Diagnostic> {
+    if index >= args.count || args[index].count == 0 {
+        return .Err(usage(message: "missing nonempty option value"))
+    }
+    return .Ok(args[index])
+}
+
+private func integer(text: String, maximum: Int): Result<Int, moss.model.Diagnostic> {
+    var number = 0
+    var index = 0
+    while index < text.count {
+        let digit = byteToInt(value: text[index]) - 48
+        if digit < 0 || digit > 9 || number > (maximum - digit) / 10 {
+            return .Err(usage(message: "numeric option is not a decimal value within its limit"))
+        }
+        number = number * 10 + digit
+        index = index + 1
+    }
+    return .Ok(number)
+}
+
+public func parse(args: [String]): Result<Command, moss.model.Diagnostic> {
+    if args.count == 0 { return .Ok(.Help) }
+    if args[0] == "--help" || args[0] == "--version" {
+        if args.count != 1 { return .Err(usage(message: "help/version must be used alone")) }
+        if args[0] == "--help" { return .Ok(.Help) }
+        return .Ok(.Version)
+    }
+    let command = args[0]
+    if command != "inspect" && command != "methods" && command != "disasm" {
+        return .Err(usage(message: "unknown command; use moss --help"))
+    }
+    if args.count < 2 || args[1].count == 0 {
+        return .Err(usage(message: "expected a .class input path after the command"))
+    }
+    var format = "text"
+    var method = ""
+    var methodIndex = -1
+    var type = ""
+    var offset = 0
+    var limit = 1000
+    var output = ""
+    var preview = false
+    var unchecked = false
+    var hasFormat = false
+    var hasMethod = false
+    var hasMethodIndex = false
+    var hasType = false
+    var hasOffset = false
+    var hasLimit = false
+    var hasOutput = false
+    var index = 2
+    while index < args.count {
+        let option = args[index]
+        if option == "--allow-preview" {
+            if preview { return .Err(usage(message: "duplicate --allow-preview")) }
+            preview = true
+            index = index + 1
+        } else if option == "--unchecked-stdout" {
+            if unchecked { return .Err(usage(message: "duplicate --unchecked-stdout")) }
+            unchecked = true
+            index = index + 1
+        } else if option == "--format" || option == "--method" || option == "--method-index" || option == "--descriptor" ||
+            option == "--offset" || option == "--limit" || option == "--output" {
+            let text = value(args: args, index: index + 1)?
+            if option == "--format" {
+                if hasFormat { return .Err(usage(message: "duplicate --format")) }
+                if text != "text" && text != "json" && text != "ndjson" {
+                    return .Err(usage(message: "format must be text, json, or ndjson"))
+                }
+                hasFormat = true
+                format = text
+            } else if option == "--method" {
+                if hasMethod { return .Err(usage(message: "duplicate --method")) }
+                hasMethod = true
+                method = text
+            } else if option == "--method-index" {
+                if hasMethodIndex { return .Err(usage(message: "duplicate --method-index")) }
+                hasMethodIndex = true
+                methodIndex = integer(text: text, maximum: 65535)?
+            } else if option == "--descriptor" {
+                if hasType { return .Err(usage(message: "duplicate --descriptor")) }
+                hasType = true
+                type = text
+            } else if option == "--offset" {
+                if hasOffset { return .Err(usage(message: "duplicate --offset")) }
+                hasOffset = true
+                offset = integer(text: text, maximum: 65535)?
+            } else if option == "--limit" {
+                if hasLimit { return .Err(usage(message: "duplicate --limit")) }
+                hasLimit = true
+                limit = integer(text: text, maximum: 10000)?
+                if limit == 0 { return .Err(usage(message: "limit must be in 1..10000")) }
+            } else {
+                if hasOutput { return .Err(usage(message: "duplicate --output")) }
+                hasOutput = true
+                output = text
+            }
+            index = index + 2
+        } else {
+            return .Err(usage(message: "unknown option or extra positional argument"))
+        }
+    }
+    if command == "disasm" && !hasMethod && !hasMethodIndex {
+        return .Err(usage(message: "disasm requires --method or --method-index"))
+    }
+    if (hasMethod && hasMethodIndex) || (hasType && !hasMethod) {
+        return .Err(usage(message: "use a name with optional descriptor, or a method index, not both"))
+    }
+    if command != "disasm" && (hasMethod || hasMethodIndex || hasType) {
+        return .Err(usage(message: "method selectors are only valid for disasm"))
+    }
+    if command == "inspect" && (hasOffset || hasLimit) {
+        return .Err(usage(message: "inspect is a complete inventory; use methods/disasm for paging"))
+    }
+    if unchecked && (format == "text" || hasOutput) {
+        return .Err(usage(message: "--unchecked-stdout is only for JSON/NDJSON without --output"))
+    }
+    if format != "text" && !hasOutput && !unchecked {
+        return .Err(usage(message: "use --output for reliable JSON/NDJSON, or opt in with --unchecked-stdout"))
+    }
+    return .Ok(.Analyze(Options(command: command, path: args[1], format: format,
+        method: method, methodIndex: methodIndex, descriptor: type, offset: offset, limit: limit, output: output,
+        allowPreview: preview, uncheckedStdout: unchecked)))
+}
+
+public func versionText(): String {
+    return "moss 0.1.0 (JVM disassembler)"
+}
+
+public func helpText(): String {
+    return "Moss - AI-oriented JVM class inspection and bytecode disassembly\n\n" +
+        "Usage:\n" +
+        "  moss --help\n" +
+        "  moss --version\n" +
+        "  moss inspect <file.class> [options]\n" +
+        "  moss methods <file.class> [--offset <index>] [--limit <count>] [options]\n" +
+        "  moss disasm <file.class> --method <name> [--descriptor <descriptor>]\n" +
+        "       [--offset <byte-offset>] [--limit <count>] [options]\n\n" +
+        "Options:\n" +
+        "  --format text|json|ndjson     Default: text\n" +
+        "  --output <new-file>          Exclusive, fallible output; never overwrites\n" +
+        "  --unchecked-stdout          Experimental JSON/NDJSON pipe output\n" +
+        "  --allow-preview             Allow Java 25 preview (69.65535)\n\n" +
+        "  --method-index <index>      Select by inventory index instead of name\n\n" +
+        "Supports Java 8..25 (52..69), minor 0. Input: 16 MiB; output: 8 MiB.\n" +
+        "Page limit: 1..10000, default 1000. Offsets must be instruction starts.\n" +
+        "No JAR, DEX, native binaries, execution, or Java source decompilation.\n" +
+        "Stdout uses unchecked print; --output is recommended for automation."
+}

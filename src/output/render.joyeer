@@ -1,0 +1,251 @@
+import moss.model
+
+private func pageJson(command: String, page: moss.model.Page): String {
+    var next = "null"
+    match page.nextOffset {
+        .Some(value) => { next = number(value: value) },
+        .None => {},
+    }
+    var coordinate = "method-index"
+    if command == "disasm" { coordinate = "jvm-method-byte-offset" }
+    return "{\"coordinate\":\"" + coordinate + "\",\"count\":" + number(value: page.end - page.first) +
+        ",\"hasMore\":" + boolean(value: next != "null") + ",\"nextOffset\":" + next + "}"
+}
+
+private func metadata(file: moss.model.ClassFile, path: String, command: String,
+    methodIndex: Int): Result<String, moss.model.Diagnostic> {
+    var method = "null"
+    if command == "disasm" { method = memberJson(file: file, item: file.methods[methodIndex], method: true)? }
+    var validation = "classfile-structure"
+    if command == "disasm" { validation = "classfile-and-selected-bytecode-structure" }
+    return .Ok("\"schemaVersion\":1,\"artifactId\":\"" + moss.model.artifactId(file: file) +
+        "\",\"inputPath\":" + quoteText(text: path)? + ",\"inputBytes\":" + number(value: file.byteCount) +
+        ",\"query\":\"" + command + "\",\"validation\":\"" + validation +
+        "\",\"class\":" + classJson(file: file)? + ",\"method\":" + method)
+}
+
+private func renderJson(input: String, file: moss.model.ClassFile, path: String, command: String,
+    methodIndex: Int, instructions: [moss.model.Instruction],
+    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "{" + metadata(file: file, path: path, command: command, methodIndex: methodIndex)? )?
+    if command == "inspect" {
+        append(buffer: &output, text: ",\"constants\":[")?
+        var index = 1
+        while index < file.pool.count {
+            if index != 1 { append(buffer: &output, text: ",")? }
+            append(buffer: &output, text: constantJson(input: input, file: file, index: index)?)?
+            index = index + 1
+        }
+        append(buffer: &output, text: "],\"fields\":[")?
+        index = 0
+        while index < file.fields.count {
+            if index != 0 { append(buffer: &output, text: ",")? }
+            append(buffer: &output, text: memberJson(file: file, item: file.fields[index], method: false)?)?
+            index = index + 1
+        }
+        append(buffer: &output, text: "],\"attributes\":[")?
+        index = 0
+        while index < file.attributes.count {
+            if index != 0 { append(buffer: &output, text: ",")? }
+            append(buffer: &output, text: attributeJson(file: file, item: file.attributes[index]))?
+            index = index + 1
+        }
+        append(buffer: &output, text: "]")?
+    }
+    if command == "inspect" || command == "methods" {
+        append(buffer: &output, text: ",\"methods\":[")?
+        var first = page.first
+        var end = page.end
+        if command == "inspect" {
+            first = 0
+            end = file.methods.count
+        }
+        var index = first
+        while index < end {
+            if index != first { append(buffer: &output, text: ",")? }
+            append(buffer: &output, text: memberJson(file: file, item: file.methods[index], method: true)?)?
+            index = index + 1
+        }
+        append(buffer: &output, text: "]")?
+    } else {
+        let artifact = moss.model.artifactId(file: file)
+        let method = moss.model.methodId(file: file, method: file.methods[methodIndex])
+        append(buffer: &output, text: ",\"instructions\":[")?
+        var index = page.first
+        while index < page.end {
+            if index != page.first { append(buffer: &output, text: ",")? }
+            append(buffer: &output, text: instructionJson(input: input, file: file,
+                artifact: artifact, method: method, item: instructions[index])?)?
+            index = index + 1
+        }
+        append(buffer: &output, text: "]")?
+    }
+    append(buffer: &output, text: ",\"page\":" + pageJson(command: command, page: page) +
+        ",\"complete\":true,\"diagnostics\":[]}")?
+    return .Ok(finish(buffer: consume output))
+}
+
+private func renderNdjson(input: String, file: moss.model.ClassFile, path: String, command: String,
+    methodIndex: Int, instructions: [moss.model.Instruction],
+    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "{\"type\":\"metadata\"," +
+        metadata(file: file, path: path, command: command, methodIndex: methodIndex)? + "}\n")?
+    if command == "inspect" {
+        var index = 1
+        while index < file.pool.count {
+            append(buffer: &output, text: "{\"type\":\"constant\",\"data\":" +
+                constantJson(input: input, file: file, index: index)? + "}\n")?
+            index = index + 1
+        }
+        index = 0
+        while index < file.fields.count {
+            append(buffer: &output, text: "{\"type\":\"field\",\"data\":" +
+                memberJson(file: file, item: file.fields[index], method: false)? + "}\n")?
+            index = index + 1
+        }
+        index = 0
+        while index < file.attributes.count {
+            append(buffer: &output, text: "{\"type\":\"attribute\",\"data\":" +
+                attributeJson(file: file, item: file.attributes[index]) + "}\n")?
+            index = index + 1
+        }
+    }
+    if command == "inspect" || command == "methods" {
+        var first = page.first
+        var end = page.end
+        if command == "inspect" {
+            first = 0
+            end = file.methods.count
+        }
+        var index = first
+        while index < end {
+            append(buffer: &output, text: "{\"type\":\"method\",\"data\":" +
+                memberJson(file: file, item: file.methods[index], method: true)? + "}\n")?
+            index = index + 1
+        }
+    } else {
+        let artifact = moss.model.artifactId(file: file)
+        let method = moss.model.methodId(file: file, method: file.methods[methodIndex])
+        var index = page.first
+        while index < page.end {
+            append(buffer: &output, text: "{\"type\":\"instruction\",\"data\":" +
+                instructionJson(input: input, file: file, artifact: artifact,
+                    method: method, item: instructions[index])? + "}\n")?
+            index = index + 1
+        }
+    }
+    append(buffer: &output, text: "{\"type\":\"completion\",\"schemaVersion\":1,\"complete\":true,\"page\":" +
+        pageJson(command: command, page: page) + ",\"diagnostics\":[]}")?
+    return .Ok(finish(buffer: consume output))
+}
+
+private func renderText(input: String, file: moss.model.ClassFile, command: String, methodIndex: Int,
+    instructions: [moss.model.Instruction], page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+    var output = buffer()
+    append(buffer: &output, text: "Class " + quoteUnits(units: moss.model.className(file: file)) +
+        " version " + number(value: file.major) + "." + number(value: file.minor) + "\n")?
+    append(buffer: &output, text: "ClassMetadata " + classJson(file: file)? +
+        "\nArtifactId " + moss.model.artifactId(file: file) + "\n")?
+    if command == "inspect" {
+        append(buffer: &output, text: "Flags " + number(value: file.flags) +
+            "; constants " + number(value: file.pool.count - 1) +
+            "; fields " + number(value: file.fields.count) + "; methods " + number(value: file.methods.count) + "\n")?
+        var index = 1
+        while index < file.pool.count {
+            append(buffer: &output, text: "#" + number(value: index) + " " +
+                constantKind(tag: file.pool[index].tag) + " " +
+                constantJson(input: input, file: file, index: index)? + "\n")?
+            index = index + 1
+        }
+        index = 0
+        while index < file.fields.count {
+            append(buffer: &output, text: "Field " + number(value: index) + " " +
+                memberJson(file: file, item: file.fields[index], method: false)? + "\n")?
+            index = index + 1
+        }
+        index = 0
+        while index < file.attributes.count {
+            append(buffer: &output, text: "ClassAttribute " + attributeJson(file: file, item: file.attributes[index]) + "\n")?
+            index = index + 1
+        }
+    }
+    if command == "inspect" || command == "methods" {
+        var first = page.first
+        var end = page.end
+        if command == "inspect" {
+            first = 0
+            end = file.methods.count
+        }
+        var index = first
+        while index < end {
+            append(buffer: &output, text: "Method " + number(value: index) + " " +
+                textAt(file: file, index: file.methods[index].nameIndex) + " " +
+                textAt(file: file, index: file.methods[index].descriptorIndex) + "\n" +
+                memberJson(file: file, item: file.methods[index], method: true)? + "\n")?
+            index = index + 1
+        }
+    } else {
+        append(buffer: &output, text: "Method " + textAt(file: file, index: file.methods[methodIndex].nameIndex) +
+            " " + textAt(file: file, index: file.methods[methodIndex].descriptorIndex) + "\n")?
+        append(buffer: &output, text: "MethodMetadata " +
+            memberJson(file: file, item: file.methods[methodIndex], method: true)? + "\n")?
+        var index = page.first
+        while index < page.end {
+            let item = instructions[index]
+            var wide = ""
+            if item.wide { wide = "wide " }
+            append(buffer: &output, text: number(value: item.methodOffset) + ": " + wide + item.mnemonic +
+                " file=" + number(value: item.fileOffset) + " size=" + number(value: item.size) +
+                " [" + hexRange(input: input, region: moss.model.ByteRange(offset: item.fileOffset, length: item.size))? + "]")?
+            var operand = 0
+            while operand < item.operands.count {
+                append(buffer: &output, text: " " + operandJson(item: item.operands[operand]))?
+                operand = operand + 1
+            }
+            append(buffer: &output, text: "\n")?
+            operand = 0
+            while operand < item.operands.count {
+                match item.operands[operand] {
+                    .Constant(value) => {
+                        append(buffer: &output, text: "  Reference " +
+                            constantJson(input: input, file: file, index: value)? + "\n")?
+                    },
+                    _ => {},
+                }
+                operand = operand + 1
+            }
+            index = index + 1
+        }
+    }
+    append(buffer: &output, text: "Page " + pageJson(command: command, page: page))?
+    return .Ok(finish(buffer: consume output))
+}
+
+public func render(input: String, file: moss.model.ClassFile, path: String,
+    command: String, format: String, methodIndex: Int, instructions: [moss.model.Instruction],
+    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+    let validCommand = command == "inspect" || command == "methods" || command == "disasm"
+    var count = file.methods.count
+    if command == "disasm" { count = instructions.count }
+    if !validCommand || page.first < 0 || page.end < page.first || page.end > count ||
+        (command == "disasm" && (methodIndex < 0 || methodIndex >= file.methods.count)) {
+        return .Err(moss.model.Diagnostic(code: "output.invalid-query", offset: -1,
+            context: "output", message: "invalid command, page, or selected method"))
+    }
+    if format == "json" {
+        return renderJson(input: input, file: file, path: path, command: command,
+            methodIndex: methodIndex, instructions: instructions, page: page)
+    }
+    if format == "ndjson" {
+        return renderNdjson(input: input, file: file, path: path, command: command,
+            methodIndex: methodIndex, instructions: instructions, page: page)
+    }
+    if format == "text" {
+        return renderText(input: input, file: file, command: command, methodIndex: methodIndex,
+            instructions: instructions, page: page)
+    }
+    return .Err(moss.model.Diagnostic(code: "output.invalid-format", offset: -1,
+        context: "output", message: "unknown output format"))
+}

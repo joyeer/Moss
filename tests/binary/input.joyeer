@@ -1,0 +1,199 @@
+import moss.binary
+
+private func claimFile(contents: String): Result<String, String> {
+    var attempt = 1
+    while attempt <= 128 {
+        let path = match joinPath(base: "target",
+            path: "moss-input-test-" + decimal(value: attempt) + ".bin") {
+            .Ok(value) => value,
+            .Err(_) => { return .Err("cannot join a fixture path") },
+        }
+        match writeFileNew(path: path, contents: contents) {
+            .Ok(_) => { return .Ok(path) },
+            .Err(error) => match error {
+                .AlreadyExists(_) => {},
+                _ => { return .Err("cannot create fixture '" + path + "'") },
+            },
+        }
+        attempt = attempt + 1
+    }
+    return .Err("all 128 exclusive fixture names are occupied")
+}
+
+private func removeFixture(state: inout TestState, path: String) {
+    let removed = match removeFile(path: path) {
+        .Ok(_) => true,
+        .Err(_) => false,
+    }
+    expect(state: &state, condition: removed, name: "remove owned fixture '" + path + "'")
+}
+
+private func hasHostCode(error: moss.binary.InputError): Bool {
+    return match moss.binary.inputHostCode(error: error) {
+        .Some(code) => code != 0,
+        .None => false,
+    }
+}
+
+func expectInputError(path: String, code: String): Int {
+    return match moss.binary.readInput(path: path) {
+        .Ok(_) => {
+            print(value: "FAIL: input unexpectedly succeeded")
+            return 1
+        },
+        .Err(error) => {
+            let original = match error {
+                .InspectFailed(value, _) => value,
+                .NotRegular(value, _) => value,
+                .ReadFailed(value, _) => value,
+                .TooLarge(value, _) => value,
+            }
+            let actual = moss.binary.inputErrorCode(error: error)
+            if original != path || actual != code {
+                print(value: "FAIL: expected " + code + ", observed " + actual)
+                return 1
+            }
+            match moss.binary.inputHostCode(error: error) {
+                .Some(native) => {
+                    if native == 0 {
+                        print(value: "FAIL: host error code was lost")
+                        return 1
+                    }
+                    print(value: "input-error: " + actual + ", native=" + decimal(value: native))
+                },
+                .None => print(value: "input-error: " + actual),
+            }
+            return 0
+        },
+    }
+}
+
+func testInput(state: inout TestState, octets: String) {
+    let limit = moss.binary.maximumInputBytes()
+    expect(state: &state, condition: limit == 16777216, name: "fixed 16 MiB input ceiling")
+    let path = match claimFile(contents: octets) {
+        .Ok(value) => value,
+        .Err(message) => {
+            expect(state: &state, condition: false, name: message)
+            return
+        },
+    }
+    let exactBytes = match moss.binary.readInput(path: path) {
+        .Ok(value) => value == octets && value.count == 256,
+        .Err(_) => false,
+    }
+    expect(state: &state, condition: exactBytes, name: "acquisition preserves arbitrary bytes")
+    let missingPath = path + ".missing"
+    let missing = match moss.binary.readInput(path: missingPath) {
+        .Ok(_) => false,
+        .Err(error) => match error {
+            .InspectFailed(original, host) => match host {
+                .NotFound(code) => original == missingPath && code != 0 &&
+                    moss.binary.inputErrorCode(error: error) == "input.inspect-failed" &&
+                    hasHostCode(error: error),
+                _ => false,
+            },
+            _ => false,
+        },
+    }
+    expect(state: &state, condition: missing, name: "missing input retains host failure and path")
+    removeFixture(state: &state, path: path)
+
+    let directory = match moss.binary.readInput(path: "target") {
+        .Ok(_) => false,
+        .Err(error) => match error {
+            .NotRegular(original, kind) => match kind {
+                .Directory => original == "target" &&
+                    moss.binary.inputErrorCode(error: error) == "input.not-regular" &&
+                    !hasHostCode(error: error),
+                _ => false,
+            },
+            _ => false,
+        },
+    }
+    expect(state: &state, condition: directory, name: "directory rejected before content read")
+    let emptyPath = match moss.binary.readInput(path: "") {
+        .Ok(_) => false,
+        .Err(error) => match error {
+            .InspectFailed(original, host) => match host {
+                .InvalidPath(code) => original == "" && code != 0 && hasHostCode(error: error),
+                _ => false,
+            },
+            _ => false,
+        },
+    }
+    expect(state: &state, condition: emptyPath, name: "empty path retains invalid-path failure")
+    let nulPath = "target\0invalid"
+    let invalidPath = match moss.binary.readInput(path: nulPath) {
+        .Ok(_) => false,
+        .Err(error) => match error {
+            .InspectFailed(original, host) => match host {
+                .InvalidPath(code) => original == nulPath && code != 0 && hasHostCode(error: error),
+                _ => false,
+            },
+            _ => false,
+        },
+    }
+    expect(state: &state, condition: invalidPath, name: "embedded NUL path is rejected")
+
+    let emptyFile = match claimFile(contents: "") {
+        .Ok(value) => value,
+        .Err(message) => {
+            expect(state: &state, condition: false, name: message)
+            return
+        },
+    }
+    let emptyInput = match moss.binary.readInput(path: emptyFile) {
+        .Ok(value) => value.count == 0,
+        .Err(_) => false,
+    }
+    expect(state: &state, condition: emptyInput, name: "empty regular file is an owned success")
+    removeFixture(state: &state, path: emptyFile)
+
+    var large = "A\0\r\n"
+    while large.count < limit {
+        large = large + large
+    }
+    expect(state: &state, condition: large.count == limit, name: "exact byte-sized ceiling fixture")
+    let boundaryFile = match claimFile(contents: large) {
+        .Ok(value) => value,
+        .Err(message) => {
+            expect(state: &state, condition: false, name: message)
+            return
+        },
+    }
+    let boundary = match moss.binary.readInput(path: boundaryFile) {
+        .Ok(value) => value.count == limit && value == large,
+        .Err(_) => false,
+    }
+    expect(state: &state, condition: boundary, name: "inclusive input byte ceiling")
+    removeFixture(state: &state, path: boundaryFile)
+
+    let oversizedFile = match claimFile(contents: large + "!") {
+        .Ok(value) => value,
+        .Err(message) => {
+            expect(state: &state, condition: false, name: message)
+            return
+        },
+    }
+    let oversized = match moss.binary.readInput(path: oversizedFile) {
+        .Ok(_) => false,
+        .Err(error) => match error {
+            .TooLarge(original, maximum) => original == oversizedFile && maximum == limit &&
+                moss.binary.inputErrorCode(error: error) == "input.too-large" &&
+                !hasHostCode(error: error),
+            _ => false,
+        },
+    }
+    expect(state: &state, condition: oversized, name: "ceiling plus sentinel is rejected")
+    removeFixture(state: &state, path: oversizedFile)
+
+    let readError: moss.binary.InputError = .ReadFailed("locked", .PermissionDenied(13))
+    let preservedReadCode = match moss.binary.inputHostCode(error: readError) {
+        .Some(code) => code == 13,
+        .None => false,
+    }
+    expect(state: &state, condition: preservedReadCode &&
+        moss.binary.inputErrorCode(error: readError) == "input.read-failed",
+        name: "read-failed diagnostic preserves native payload")
+}

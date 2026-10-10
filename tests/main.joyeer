@@ -1,0 +1,53 @@
+import moss.cli
+
+private func isHelp(args: [String]): Bool {
+    return match moss.cli.parse(args: args) {
+        .Ok(command) => match command {
+            .Help => true,
+            .Version => false,
+            .Analyze(_) => false,
+        },
+        .Err(_) => false,
+    }
+}
+
+private func isVersion(args: [String]): Bool {
+    return match moss.cli.parse(args: args) {
+        .Ok(command) => match command {
+            .Help => false,
+            .Version => true,
+            .Analyze(_) => false,
+        },
+        .Err(_) => false,
+    }
+}
+
+private func isRejected(args: [String]): Bool {
+    return match moss.cli.parse(args: args) {
+        .Ok(_) => false,
+        .Err(error) => error.message.count != 0 && error.code == "cli.usage",
+    }
+}
+
+private func failed(name: String): Int {
+    print(value: "FAIL: " + name)
+    return 1
+}
+
+func main(args: [String]): Int {
+    if args.count != 0 { return failed(name: "test runner expects no arguments") }
+    if !isHelp(args: []) { return failed(name: "empty arguments show help") }
+    if !isHelp(args: ["--help"]) { return failed(name: "explicit help") }
+    if !isVersion(args: ["--version"]) { return failed(name: "explicit version") }
+    if !isRejected(args: ["disasm"]) { return failed(name: "missing analysis input") }
+    if !isRejected(args: ["--unknown"]) { return failed(name: "unknown option") }
+    if !isRejected(args: [""]) { return failed(name: "empty argument") }
+    if !isRejected(args: ["--help", "extra"]) { return failed(name: "help used alone") }
+    if !isRejected(args: ["--version", "extra"]) { return failed(name: "version used alone") }
+    if moss.cli.versionText() != "moss 0.1.0 (JVM disassembler)" {
+        return failed(name: "version identifies current capabilities")
+    }
+    if moss.cli.helpText().count == 0 { return failed(name: "help is nonempty") }
+    print(value: "moss-tests: 10 checks passed")
+    return 0
+}

@@ -1,0 +1,82 @@
+schema-version = 1
+
+[package]
+name = 'moss'
+version = '0.1.0'
+
+[[modules]]
+name = 'moss.binary'
+sources = ['src/binary/reader.joyeer', 'src/binary/input.joyeer']
+dependencies = []
+
+[[modules]]
+name = 'moss.model'
+sources = ['src/model/facts.joyeer', 'src/model/text.joyeer']
+dependencies = []
+
+[[modules]]
+name = 'moss.jvm'
+sources = [
+    'src/jvm/common.joyeer',
+    'src/jvm/descriptor.joyeer',
+    'src/jvm/pool.joyeer',
+    'src/jvm/attributes.joyeer',
+    'src/jvm/classfile.joyeer',
+    'src/jvm/decoder.joyeer',
+]
+dependencies = ['moss.binary', 'moss.model']
+
+[[modules]]
+name = 'moss.output'
+sources = ['src/output/buffer.joyeer', 'src/output/facts.joyeer', 'src/output/render.joyeer']
+dependencies = ['moss.model']
+
+[[modules]]
+name = 'moss.cli'
+sources = ['src/cli.joyeer', 'src/cli/analysis.joyeer']
+dependencies = ['moss.binary', 'moss.jvm', 'moss.model', 'moss.output']
+
+[[modules]]
+name = 'moss.app'
+sources = ['src/main.joyeer']
+dependencies = ['moss.binary', 'moss.cli', 'moss.model']
+
+[[modules]]
+name = 'moss.tests'
+sources = ['tests/main.joyeer']
+dependencies = ['moss.cli']
+
+[[modules]]
+name = 'moss.binary.tests'
+sources = [
+    'tests/binary/main.joyeer',
+    'tests/binary/support.joyeer',
+    'tests/binary/reader.joyeer',
+    'tests/binary/input.joyeer',
+]
+dependencies = ['moss.binary']
+
+[[modules]]
+name = 'moss.jvm.tests'
+sources = ['tests/jvm/main.joyeer']
+dependencies = ['moss.binary', 'moss.cli', 'moss.jvm', 'moss.model', 'moss.output']
+
+[[targets]]
+name = 'moss'
+kind = 'bin'
+module = 'moss.app'
+
+[[targets]]
+name = 'moss-tests'
+kind = 'test'
+module = 'moss.tests'
+
+[[targets]]
+name = 'moss-binary-tests'
+kind = 'test'
+module = 'moss.binary.tests'
+
+[[targets]]
+name = 'moss-jvm-tests'
+kind = 'test'
+module = 'moss.jvm.tests'
