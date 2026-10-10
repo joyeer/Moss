@@ -89,6 +89,9 @@ members, `build` selects bins, and `test` selects test modules. Use
 `run` and `test` always rebuild, with workspace-root cwd to preserve fixtures.
 Outputs are ignored under `target`, with 128 fresh generations per
 module/profile and no automatic cleanup, cache, or dependency fetching.
+The [.gitignore](.gitignore) also excludes root-level native build artifacts
+and local OS/editor files. Binary input fixtures and expected JSON data
+remain versioned.
 See [joypm](../joyeer-lang/docs/impl/joypm.md).
 
 ## Project layout

@@ -1,1 +1,21 @@
 /target/
+
+# Direct compiler outputs at the repository root, not binary test fixtures.
+/moss
+/moss-tests
+/moss-binary-tests
+/moss-jvm-tests
+/*.exe
+/*.pdb
+/*.ilk
+/*.obj
+/*.o
+/*.dSYM/
+
+.DS_Store
+[Tt]humbs.db
+[Dd]esktop.ini
+.vs/
+*.swp
+*.swo
+*~
