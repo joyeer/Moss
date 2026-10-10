@@ -7,7 +7,8 @@ bytecode decoder, general I/O library, or cross-platform acceptance claim.
 
 The sources are [reader.joyeer](../src/binary/reader.joyeer) and
 [input.joyeer](../src/binary/input.joyeer), explicitly registered in
-[joyeer.toml](../joyeer.toml). Consumers write `import moss.binary` and use
+[module manifest](../src/binary/joyeer.toml). The root
+[workspace](../workspace.toml) includes this member. Consumers write `import moss.binary` and use
 qualified names.
 
 ## Ownership and coordinates

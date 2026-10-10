@@ -41,27 +41,27 @@ Set-Location 'C:\Source\Moss'
 $joypm = 'C:\Source\joyeer-lang\out\build\arm64-debug\bin\joypm.exe'
 $compiler = 'C:\Source\joyeer-lang\out\build\arm64-debug\bin\joyeer.exe'
 
-& $joypm check --compiler $compiler
+& $joypm check --compiler $compiler --workspace .\workspace.toml
 if ($LASTEXITCODE -ne 0) { throw 'Moss check failed' }
 
-& $joypm build --compiler $compiler --target moss
+& $joypm build --compiler $compiler --workspace .\workspace.toml --module moss.app
 if ($LASTEXITCODE -ne 0) { throw 'Moss build failed' }
 
-& $joypm run --compiler $compiler --target moss -- `
+& $joypm run --compiler $compiler --workspace .\workspace.toml --module moss.app -- `
     disasm 'tests\fixtures\jvm\Example25.class' --method wide
 if ($LASTEXITCODE -ne 0) { throw 'Moss disassembly failed' }
 
-& $joypm test --compiler $compiler
+& $joypm test --compiler $compiler --workspace .\workspace.toml
 if ($LASTEXITCODE -ne 0) { throw 'Moss tests failed' }
 
-& $joypm test --compiler $compiler --release
+& $joypm test --compiler $compiler --workspace .\workspace.toml --release
 if ($LASTEXITCODE -ne 0) { throw 'Moss release tests failed' }
 ```
 
 Machine-readable output should use a new destination file:
 
 ```powershell
-& $joypm run --compiler $compiler --target moss -- `
+& $joypm run --compiler $compiler --workspace .\workspace.toml --module moss.app -- `
     disasm 'tests\fixtures\jvm\Example25.class' --method sum `
     --descriptor '(II)I' --format json --output '.\sum.json'
 if ($LASTEXITCODE -ne 0) { throw 'Moss output failed' }
@@ -80,11 +80,15 @@ Compiler paths are explicit, not stored in the manifest. Use a matching
 native toolchain on another machine; see the upstream
 [building guide](../joyeer-lang/docs/building.md).
 
-joypm reads [joyeer.toml](joyeer.toml) with explicit source files. `check`
-includes all declared targets; `build` selects executable targets; `test`
-builds/runs native test targets. `run` and `test` always rebuild. Build outputs
-are ignored under `target`; fresh generations are limited to 128 per
-target/profile, without automatic cleanup, cache, or dependency fetching.
+The project uses joypm 0.1.0: [workspace.toml](workspace.toml) lists nine
+members, each with one schema-1 `joyeer.toml`. The root
+[joyeer.toml](joyeer.toml) defines only `moss.app`; module sources and
+dependencies are maintained next to their own code. `check` includes all
+members, `build` selects bins, and `test` selects test modules. Use
+`--module moss.app`, not the removed `--target moss`.
+`run` and `test` always rebuild, with workspace-root cwd to preserve fixtures.
+Outputs are ignored under `target`, with 128 fresh generations per
+module/profile and no automatic cleanup, cache, or dependency fetching.
 See [joypm](../joyeer-lang/docs/impl/joypm.md).
 
 ## Project layout
@@ -128,7 +132,7 @@ Run the integration suite against the explicit artifact path printed by a
 successful joypm build:
 
 ```powershell
-$moss = 'C:\Source\Moss\target\debug\moss\build-7\moss.exe'
+$moss = 'C:\Source\Moss\target\debug\moss.app\build-1\moss.exe'
 & 'C:\Program Files\nodejs\node.exe' '.\tests\jvm\integration.cjs' $moss
 if ($LASTEXITCODE -ne 0) { throw 'Moss integration failed' }
 ```
@@ -137,6 +141,10 @@ The example generation is local evidence, not a stable `latest` alias.
 Node uses only its standard library and is a development/test prerequisite,
 not a product dependency. Durable class fixtures are checked in, so the
 ordinary joypm native suites do not require Node or a JDK.
+
+The module/workspace configuration migration preserves the same product
+sources and test fixtures. With the updated joypm 0.1.0, all nine members check and
+Debug/Release native tests retain the same 2158 checks per profile.
 
 No JDK was found in this environment, so the optional gate is **not executed**:
 

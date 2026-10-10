@@ -81,8 +81,9 @@ Do not construct a rich decompiler object graph merely to print bytecode.
 | `moss.cli` | Queries, command validation, selection, budgets | `moss.jvm`, `moss.output` |
 | `moss.app` | Host I/O and final CLI status handling | `moss.binary`, `moss.cli`, `moss.model` |
 
-The manifest explicitly registers these sources and the binary/JVM/CLI
-native test targets. `moss.cli` also directly uses `moss.binary` and
+The [workspace](../workspace.toml) explicitly registers nine member directories,
+each with its own single-module manifest. Binary/JVM/CLI tests are separate
+test modules. `moss.cli` also directly uses `moss.binary` and
 `moss.model`. Introduce further modules only with real sources and explicit
 test targets; do not create empty placeholders.
 
@@ -257,8 +258,9 @@ performance guarantee is advertised before M5 measurements.
 
 ## 5. Validation strategy
 
-Every implementation milestone adds explicit Joyeer native test targets
-in the manifest. The package manager does not discover test functions/files.
+Every implementation milestone adds explicit Joyeer native test modules
+with their own manifests and workspace membership. The package manager
+does not discover test functions/files.
 Test executables return nonzero on failures.
 
 - Reader tests: byte-exact inputs, NUL, signed extrema, u4 maximum, cursor
