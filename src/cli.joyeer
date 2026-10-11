@@ -20,18 +20,18 @@ public enum Command {
     Analyze(Options),
 }
 
-private func usage(message: String): moss.model.Diagnostic {
-    return moss.model.Diagnostic(code: "cli.usage", offset: -1, context: "arguments", message: message)
+private func usage(message: borrowing String): Diagnostic {
+    return Diagnostic(code: "cli.usage", offset: -1, context: "arguments", message: message)
 }
 
-private func value(args: [String], index: Int): Result<String, moss.model.Diagnostic> {
+private func value(args: borrowing [String], index: Int): Result<String, Diagnostic> {
     if index >= args.count || args[index].count == 0 {
         return .Err(usage(message: "missing nonempty option value"))
     }
     return .Ok(args[index])
 }
 
-private func integer(text: String, maximum: Int): Result<Int, moss.model.Diagnostic> {
+private func integer(text: borrowing String, maximum: Int): Result<Int, Diagnostic> {
     var number = 0
     var index = 0
     while index < text.count {
@@ -45,7 +45,7 @@ private func integer(text: String, maximum: Int): Result<Int, moss.model.Diagnos
     return .Ok(number)
 }
 
-public func parse(args: [String]): Result<Command, moss.model.Diagnostic> {
+public func parse(args: borrowing [String]): Result<Command, Diagnostic> {
     if args.count == 0 { return .Ok(.Help) }
     if args[0] == "--help" || args[0] == "--version" {
         if args.count != 1 { return .Err(usage(message: "help/version must be used alone")) }

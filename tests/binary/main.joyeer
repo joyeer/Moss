@@ -1,6 +1,6 @@
 import moss.binary
 
-func main(args: [String]): Int {
+func main(args: borrowing [String]): Int {
     if args.count == 3 && args[0] == "--expect-input-error" {
         return expectInputError(path: args[1], code: args[2])
     }
@@ -23,11 +23,11 @@ func main(args: [String]): Int {
             return 1
         },
     }
-    let octets = match moss.binary.readInput(path: fixturePath) {
+    let octets = match readInput(path: fixturePath) {
         .Ok(bytes) => bytes,
         .Err(error) => {
             print(value: "moss-binary-tests: fixture load failed: " +
-                moss.binary.inputErrorCode(error: error))
+                inputErrorCode(error: error))
             return 1
         },
     }

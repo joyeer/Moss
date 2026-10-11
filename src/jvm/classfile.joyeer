@@ -1,14 +1,14 @@
 import moss.binary
 import moss.model
 
-private func readMember(input: String, cursor: inout moss.binary.Cursor,
-    pool: [moss.model.Constant], method: Bool, inventoryIndex: Int,
-    budget: inout ParseBudget): Result<moss.model.Member, moss.model.Diagnostic> {
+private func readMember(input: borrowing String, cursor: inout Cursor,
+    pool: borrowing [Constant], method: Bool, inventoryIndex: Int,
+    budget: inout ParseBudget): Result<Member, Diagnostic> {
     let start = cursor.position
     let flags = u(input: input, cursor: &cursor, width: 2, context: "member.flags")?
     let visibility = flags % 8
     if (visibility != 0 && visibility != 1 && visibility != 2 && visibility != 4) ||
-        (!method && moss.model.flag(value: flags, mask: 16) && moss.model.flag(value: flags, mask: 64)) {
+        (!method && flag(value: flags, mask: 16) && flag(value: flags, mask: 64)) {
         return .Err(diagnostic(code: "jvm.invalid-member-flags", offset: start,
             context: "member flags", message: "incompatible visibility or final/volatile field flags"))
     }
@@ -22,26 +22,26 @@ private func readMember(input: String, cursor: inout moss.binary.Cursor,
     let type = utf8(pool: pool, index: typeIndex, offset: start + 4, context: "member descriptor")?
     let info = descriptor(units: type, method: method, offset: start + 4)?
     var parameterSlots = info.slots
-    let static = moss.model.flag(value: flags, mask: 8)
+    let static = flag(value: flags, mask: 8)
     if method && !static { parameterSlots = parameterSlots + 1 }
     if method && parameterSlots > 255 {
         return .Err(diagnostic(code: "jvm.invalid-descriptor", offset: start + 4,
             context: "method", message: "parameters and receiver exceed 255 slots"))
     }
     if method && named(pool: pool, index: nameIndex, name: "<init>") &&
-        (static || info.returnType != 86 || moss.model.flag(value: flags, mask: 256) ||
-            moss.model.flag(value: flags, mask: 1024) || moss.model.flag(value: flags, mask: 16) ||
-            moss.model.flag(value: flags, mask: 32)) {
+        (static || info.returnType != 86 || flag(value: flags, mask: 256) ||
+            flag(value: flags, mask: 1024) || flag(value: flags, mask: 16) ||
+            flag(value: flags, mask: 32)) {
         return .Err(diagnostic(code: "jvm.invalid-method", offset: start,
             context: "<init>", message: "constructor must be nonstatic and return void"))
     }
     if method && named(pool: pool, index: nameIndex, name: "<clinit>") &&
-        (!static || !moss.model.unitsEqualAscii(units: type, text: "()V")) {
+        (!static || !unitsEqualAscii(units: type, text: "()V")) {
         return .Err(diagnostic(code: "jvm.invalid-method", offset: start,
             context: "<clinit>", message: "class initializer must be static ()V"))
     }
     let attributes = readAttributes(input: input, cursor: &cursor, pool: pool, budget: &budget)?
-    var code: moss.model.Code? = .None
+    var code: Code? = .None
     var codeCount = 0
     var constantCount = 0
     var exceptionCount = 0
@@ -69,7 +69,7 @@ private func readMember(input: String, cursor: inout moss.binary.Cursor,
             if info.returnType == 70 { expected = 4 }
             if info.returnType == 74 { expected = 5 }
             if info.returnType == 68 { expected = 6 }
-            if moss.model.unitsEqualAscii(units: type, text: "Ljava/lang/String;") { expected = 8 }
+            if unitsEqualAscii(units: type, text: "Ljava/lang/String;") { expected = 8 }
             if info.returnType == 91 || (info.returnType == 76 && expected != 8) ||
                 pool[constant].tag != expected {
                 return .Err(diagnostic(code: "jvm.invalid-constant-tag", offset: attributes[index].body.offset,
@@ -87,10 +87,10 @@ private func readMember(input: String, cursor: inout moss.binary.Cursor,
         index = index + 1
     }
     if method {
-        let absent = moss.model.flag(value: flags, mask: 256) || moss.model.flag(value: flags, mask: 1024)
-        if moss.model.flag(value: flags, mask: 1024) &&
-            (moss.model.flag(value: flags, mask: 2) || static || moss.model.flag(value: flags, mask: 16) ||
-                moss.model.flag(value: flags, mask: 32) || moss.model.flag(value: flags, mask: 256)) {
+        let absent = flag(value: flags, mask: 256) || flag(value: flags, mask: 1024)
+        if flag(value: flags, mask: 1024) &&
+            (flag(value: flags, mask: 2) || static || flag(value: flags, mask: 16) ||
+                flag(value: flags, mask: 32) || flag(value: flags, mask: 256)) {
             return .Err(diagnostic(code: "jvm.invalid-method", offset: start,
                 context: "method flags", message: "abstract method has incompatible access flags"))
         }
@@ -99,23 +99,23 @@ private func readMember(input: String, cursor: inout moss.binary.Cursor,
                 context: "method", message: "native/abstract methods have no Code; other methods require Code"))
         }
     }
-    return .Ok(moss.model.Member(index: inventoryIndex, fileOffset: start, flags: flags, nameIndex: nameIndex,
+    return .Ok(Member(index: inventoryIndex, fileOffset: start, flags: flags, nameIndex: nameIndex,
         descriptorIndex: typeIndex, attributes: attributes, code: code))
 }
 
-private func memberOrder(first: moss.model.Member, second: moss.model.Member,
-    pool: [moss.model.Constant]): Int {
+private func memberOrder(first: borrowing Member, second: borrowing Member,
+    pool: borrowing [Constant]): Int {
     if first.nameIndex == second.nameIndex && first.descriptorIndex == second.descriptorIndex { return 0 }
     var name = 0
     if first.nameIndex != second.nameIndex {
-        name = moss.model.compareUnits(first: pool[first.nameIndex].text, second: pool[second.nameIndex].text)
+        name = compareUnits(first: pool[first.nameIndex].text, second: pool[second.nameIndex].text)
     }
     if name != 0 { return name }
-    return moss.model.compareUnits(first: pool[first.descriptorIndex].text, second: pool[second.descriptorIndex].text)
+    return compareUnits(first: pool[first.descriptorIndex].text, second: pool[second.descriptorIndex].text)
 }
 
-private func uniqueMembers(members: [moss.model.Member],
-    pool: [moss.model.Constant]): Result<Void, moss.model.Diagnostic> {
+private func uniqueMembers(members: borrowing [Member],
+    pool: borrowing [Constant]): Result<Void, Diagnostic> {
     if members.count < 2 { return .Ok(()) }
     var order: [Int] = []
     var scratch: [Int] = []
@@ -167,10 +167,10 @@ private func uniqueMembers(members: [moss.model.Member],
     return .Ok(())
 }
 
-private func readMembers(input: String, cursor: inout moss.binary.Cursor,
-    pool: [moss.model.Constant], method: Bool, budget: inout ParseBudget): Result<[moss.model.Member], moss.model.Diagnostic> {
+private func readMembers(input: borrowing String, cursor: inout Cursor,
+    pool: borrowing [Constant], method: Bool, budget: inout ParseBudget): Result<[Member], Diagnostic> {
     let count = count16(input: input, cursor: &cursor, minimumBytes: 8, budget: &budget, context: "members_count")?
-    var members: [moss.model.Member] = []
+    var members: [Member] = []
     var index = 0
     while index < count {
         &members.append(element: readMember(input: input, cursor: &cursor, pool: pool,
@@ -181,12 +181,12 @@ private func readMembers(input: String, cursor: inout moss.binary.Cursor,
     return .Ok(members)
 }
 
-public func parseClass(input: String, allowPreview: Bool): Result<moss.model.ClassFile, moss.model.Diagnostic> {
-    if input.count > moss.binary.maximumInputBytes() {
+public func parseClass(input: borrowing String, allowPreview: Bool): Result<ClassFile, Diagnostic> {
+    if input.count > maximumInputBytes() {
         return .Err(diagnostic(code: "input.too-large", offset: 0,
             context: "classfile", message: "input exceeds the 16 MiB ceiling"))
     }
-    var cursor = moss.binary.fullCursor(input: input)
+    var cursor = fullCursor(input: input)
     let magic = u(input: input, cursor: &cursor, width: 4, context: "class.magic")?
     if magic != 3405691582 {
         return .Err(diagnostic(code: "jvm.invalid-magic", offset: 0,
@@ -204,10 +204,10 @@ public func parseClass(input: String, allowPreview: Bool): Result<moss.model.Cla
     let thisClass = u(input: input, cursor: &cursor, width: 2, context: "class.this_class")?
     let superClass = u(input: input, cursor: &cursor, width: 2, context: "class.super_class")?
     classConstant(pool: pool, index: thisClass, arrayAllowed: false, offset: cursor.position - 4, context: "this_class")?
-    let module = moss.model.flag(value: flags, mask: 32768)
-    if (moss.model.flag(value: flags, mask: 16) && moss.model.flag(value: flags, mask: 1024)) ||
-        (moss.model.flag(value: flags, mask: 512) && !moss.model.flag(value: flags, mask: 1024)) ||
-        (moss.model.flag(value: flags, mask: 8192) && !moss.model.flag(value: flags, mask: 512)) {
+    let module = flag(value: flags, mask: 32768)
+    if (flag(value: flags, mask: 16) && flag(value: flags, mask: 1024)) ||
+        (flag(value: flags, mask: 512) && !flag(value: flags, mask: 1024)) ||
+        (flag(value: flags, mask: 8192) && !flag(value: flags, mask: 512)) {
         return .Err(diagnostic(code: "jvm.invalid-class-flags", offset: cursor.position - 6,
             context: "class flags", message: "incompatible class/interface/annotation flags"))
     }
@@ -215,7 +215,7 @@ public func parseClass(input: String, allowPreview: Bool): Result<moss.model.Cla
         classConstant(pool: pool, index: superClass, arrayAllowed: false,
             offset: cursor.position - 2, context: "super_class")?
         if named(pool: pool, index: pool[thisClass].first, name: "java/lang/Object") ||
-            (moss.model.flag(value: flags, mask: 512) &&
+            (flag(value: flags, mask: 512) &&
                 !named(pool: pool, index: pool[superClass].first, name: "java/lang/Object")) {
             return .Err(diagnostic(code: "jvm.invalid-super-class", offset: cursor.position - 2,
                 context: "classfile", message: "Object has no superclass and interfaces extend Object"))
@@ -298,7 +298,7 @@ public func parseClass(input: String, allowPreview: Bool): Result<moss.model.Cla
         }
         index = index + 1
     }
-    return .Ok(moss.model.ClassFile(byteCount: input.count, minor: minor, major: major,
+    return .Ok(ClassFile(byteCount: input.count, minor: minor, major: major,
         flags: flags, thisClass: thisClass, superClass: superClass, interfaces: interfaces,
         pool: pool, fields: fields, methods: methods, attributes: attributes, bootstrapCount: bootstrapCount))
 }

@@ -1,6 +1,6 @@
 import moss.model
 
-private func pageJson(command: String, page: moss.model.Page): String {
+private func pageJson(command: borrowing String, page: borrowing Page): String {
     var next = "null"
     match page.nextOffset {
         .Some(value) => { next = number(value: value) },
@@ -12,21 +12,21 @@ private func pageJson(command: String, page: moss.model.Page): String {
         ",\"hasMore\":" + boolean(value: next != "null") + ",\"nextOffset\":" + next + "}"
 }
 
-private func metadata(file: moss.model.ClassFile, path: String, command: String,
-    methodIndex: Int): Result<String, moss.model.Diagnostic> {
+private func metadata(file: borrowing ClassFile, path: borrowing String, command: borrowing String,
+    methodIndex: Int): Result<String, Diagnostic> {
     var method = "null"
     if command == "disasm" { method = memberJson(file: file, item: file.methods[methodIndex], method: true)? }
     var validation = "classfile-structure"
     if command == "disasm" { validation = "classfile-and-selected-bytecode-structure" }
-    return .Ok("\"schemaVersion\":1,\"artifactId\":\"" + moss.model.artifactId(file: file) +
+    return .Ok("\"schemaVersion\":1,\"artifactId\":\"" + artifactId(file: file) +
         "\",\"inputPath\":" + quoteText(text: path)? + ",\"inputBytes\":" + number(value: file.byteCount) +
         ",\"query\":\"" + command + "\",\"validation\":\"" + validation +
         "\",\"class\":" + classJson(file: file)? + ",\"method\":" + method)
 }
 
-private func renderJson(input: String, file: moss.model.ClassFile, path: String, command: String,
-    methodIndex: Int, instructions: [moss.model.Instruction],
-    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+private func renderJson(input: borrowing String, file: borrowing ClassFile, path: borrowing String, command: borrowing String,
+    methodIndex: Int, instructions: borrowing [Instruction],
+    page: borrowing Page): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "{" + metadata(file: file, path: path, command: command, methodIndex: methodIndex)? )?
     if command == "inspect" {
@@ -69,8 +69,8 @@ private func renderJson(input: String, file: moss.model.ClassFile, path: String,
         }
         append(buffer: &output, text: "]")?
     } else {
-        let artifact = moss.model.artifactId(file: file)
-        let method = moss.model.methodId(file: file, method: file.methods[methodIndex])
+        let artifact = artifactId(file: file)
+        let method = methodId(file: file, method: file.methods[methodIndex])
         append(buffer: &output, text: ",\"instructions\":[")?
         var index = page.first
         while index < page.end {
@@ -86,9 +86,9 @@ private func renderJson(input: String, file: moss.model.ClassFile, path: String,
     return .Ok(finish(buffer: consume output))
 }
 
-private func renderNdjson(input: String, file: moss.model.ClassFile, path: String, command: String,
-    methodIndex: Int, instructions: [moss.model.Instruction],
-    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+private func renderNdjson(input: borrowing String, file: borrowing ClassFile, path: borrowing String, command: borrowing String,
+    methodIndex: Int, instructions: borrowing [Instruction],
+    page: borrowing Page): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "{\"type\":\"metadata\"," +
         metadata(file: file, path: path, command: command, methodIndex: methodIndex)? + "}\n")?
@@ -126,8 +126,8 @@ private func renderNdjson(input: String, file: moss.model.ClassFile, path: Strin
             index = index + 1
         }
     } else {
-        let artifact = moss.model.artifactId(file: file)
-        let method = moss.model.methodId(file: file, method: file.methods[methodIndex])
+        let artifact = artifactId(file: file)
+        let method = methodId(file: file, method: file.methods[methodIndex])
         var index = page.first
         while index < page.end {
             append(buffer: &output, text: "{\"type\":\"instruction\",\"data\":" +
@@ -141,13 +141,13 @@ private func renderNdjson(input: String, file: moss.model.ClassFile, path: Strin
     return .Ok(finish(buffer: consume output))
 }
 
-private func renderText(input: String, file: moss.model.ClassFile, command: String, methodIndex: Int,
-    instructions: [moss.model.Instruction], page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+private func renderText(input: borrowing String, file: borrowing ClassFile, command: borrowing String, methodIndex: Int,
+    instructions: borrowing [Instruction], page: borrowing Page): Result<String, Diagnostic> {
     var output = buffer()
-    append(buffer: &output, text: "Class " + quoteUnits(units: moss.model.className(file: file)) +
+    append(buffer: &output, text: "Class " + quoteUnits(units: className(file: file)) +
         " version " + number(value: file.major) + "." + number(value: file.minor) + "\n")?
     append(buffer: &output, text: "ClassMetadata " + classJson(file: file)? +
-        "\nArtifactId " + moss.model.artifactId(file: file) + "\n")?
+        "\nArtifactId " + artifactId(file: file) + "\n")?
     if command == "inspect" {
         append(buffer: &output, text: "Flags " + number(value: file.flags) +
             "; constants " + number(value: file.pool.count - 1) +
@@ -198,7 +198,7 @@ private func renderText(input: String, file: moss.model.ClassFile, command: Stri
             if item.wide { wide = "wide " }
             append(buffer: &output, text: number(value: item.methodOffset) + ": " + wide + item.mnemonic +
                 " file=" + number(value: item.fileOffset) + " size=" + number(value: item.size) +
-                " [" + hexRange(input: input, region: moss.model.ByteRange(offset: item.fileOffset, length: item.size))? + "]")?
+                " [" + hexRange(input: input, region: ByteRange(offset: item.fileOffset, length: item.size))? + "]")?
             var operand = 0
             while operand < item.operands.count {
                 append(buffer: &output, text: " " + operandJson(item: item.operands[operand]))?
@@ -223,15 +223,15 @@ private func renderText(input: String, file: moss.model.ClassFile, command: Stri
     return .Ok(finish(buffer: consume output))
 }
 
-public func render(input: String, file: moss.model.ClassFile, path: String,
-    command: String, format: String, methodIndex: Int, instructions: [moss.model.Instruction],
-    page: moss.model.Page): Result<String, moss.model.Diagnostic> {
+public func render(input: borrowing String, file: borrowing ClassFile, path: borrowing String,
+    command: borrowing String, format: borrowing String, methodIndex: Int, instructions: borrowing [Instruction],
+    page: borrowing Page): Result<String, Diagnostic> {
     let validCommand = command == "inspect" || command == "methods" || command == "disasm"
     var count = file.methods.count
     if command == "disasm" { count = instructions.count }
     if !validCommand || page.first < 0 || page.end < page.first || page.end > count ||
         (command == "disasm" && (methodIndex < 0 || methodIndex >= file.methods.count)) {
-        return .Err(moss.model.Diagnostic(code: "output.invalid-query", offset: -1,
+        return .Err(Diagnostic(code: "output.invalid-query", offset: -1,
             context: "output", message: "invalid command, page, or selected method"))
     }
     if format == "json" {
@@ -246,6 +246,6 @@ public func render(input: String, file: moss.model.ClassFile, path: String,
         return renderText(input: input, file: file, command: command, methodIndex: methodIndex,
             instructions: instructions, page: page)
     }
-    return .Err(moss.model.Diagnostic(code: "output.invalid-format", offset: -1,
+    return .Err(Diagnostic(code: "output.invalid-format", offset: -1,
         context: "output", message: "unknown output format"))
 }

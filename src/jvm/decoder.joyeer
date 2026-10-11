@@ -30,7 +30,7 @@ private func opcodeNames(): [String] {
 }
 
 private func checkLocal(slot: Int, opcode: Int, maxLocals: Int,
-    offset: Int): Result<Void, moss.model.Diagnostic> {
+    offset: Int): Result<Void, Diagnostic> {
     var width = 1
     if opcode == 22 || opcode == 24 || opcode == 55 || opcode == 57 ||
         (opcode >= 30 && opcode <= 33) || (opcode >= 38 && opcode <= 41) ||
@@ -42,12 +42,12 @@ private func checkLocal(slot: Int, opcode: Int, maxLocals: Int,
     return .Ok(())
 }
 
-private func referenceDescriptor(pool: [moss.model.Constant], index: Int): [Int] {
+private func referenceDescriptor(pool: borrowing [Constant], index: Int): [Int] {
     return pool[pool[pool[index].second].second].text
 }
 
-private func checkConstant(pool: [moss.model.Constant], index: Int, opcode: Int,
-    offset: Int): Result<Void, moss.model.Diagnostic> {
+private func checkConstant(pool: borrowing [Constant], index: Int, opcode: Int,
+    offset: Int): Result<Void, Diagnostic> {
     requireTag(pool: pool, index: index, tag: 0, offset: offset, context: "bytecode constant")?
     let tag = pool[index].tag
     var valid = false
@@ -55,8 +55,8 @@ private func checkConstant(pool: [moss.model.Constant], index: Int, opcode: Int,
         var wideValue = tag == 5 || tag == 6
         if tag == 17 {
             let type = referenceDescriptor(pool: pool, index: index)
-            wideValue = moss.model.unitsEqualAscii(units: type, text: "J") ||
-                moss.model.unitsEqualAscii(units: type, text: "D")
+            wideValue = unitsEqualAscii(units: type, text: "J") ||
+                unitsEqualAscii(units: type, text: "D")
         }
         if opcode == 20 {
             valid = wideValue
@@ -93,8 +93,8 @@ private func checkConstant(pool: [moss.model.Constant], index: Int, opcode: Int,
     return .Ok(())
 }
 
-private func decodeOne(input: String, cursor: inout moss.binary.Cursor, code: moss.model.Code,
-    pool: [moss.model.Constant], names: [String], returnType: Int): Result<moss.model.Instruction, moss.model.Diagnostic> {
+private func decodeOne(input: borrowing String, cursor: inout Cursor, code: borrowing Code,
+    pool: borrowing [Constant], names: borrowing [String], returnType: Int): Result<Instruction, Diagnostic> {
     let start = cursor.position
     let pc = start - code.bytes.offset
     let raw = u(input: input, cursor: &cursor, width: 1, context: "opcode")?
@@ -104,7 +104,7 @@ private func decodeOne(input: String, cursor: inout moss.binary.Cursor, code: mo
     }
     var opcode = raw
     var wide = false
-    var operands: [moss.model.Operand] = []
+    var operands: [Operand] = []
     if raw == 196 {
         wide = true
         opcode = u(input: input, cursor: &cursor, width: 1, context: "wide.opcode")?
@@ -240,11 +240,11 @@ private func decodeOne(input: String, cursor: inout moss.binary.Cursor, code: mo
                 context: "return", message: "opcode does not match method return descriptor"))
         }
     }
-    return .Ok(moss.model.Instruction(methodOffset: pc, fileOffset: start, size: cursor.position - start,
+    return .Ok(Instruction(methodOffset: pc, fileOffset: start, size: cursor.position - start,
         rawOpcode: raw, opcode: opcode, mnemonic: names[opcode], wide: wide, operands: operands))
 }
 
-public func instructionIndex(instructions: [moss.model.Instruction], offset: Int): Int? {
+public func instructionIndex(instructions: borrowing [Instruction], offset: Int): Int? {
     var low = 0
     var high = instructions.count
     while low < high {
@@ -259,15 +259,15 @@ public func instructionIndex(instructions: [moss.model.Instruction], offset: Int
     return .None
 }
 
-private func isStart(instructions: [moss.model.Instruction], offset: Int): Bool {
+private func isStart(instructions: borrowing [Instruction], offset: Int): Bool {
     return match instructionIndex(instructions: instructions, offset: offset) {
         .Some(_) => true,
         .None => false,
     }
 }
 
-private func checkBoundaries(instructions: [moss.model.Instruction],
-    code: moss.model.Code): Result<Void, moss.model.Diagnostic> {
+private func checkBoundaries(instructions: borrowing [Instruction],
+    code: borrowing Code): Result<Void, Diagnostic> {
     var index = 0
     while index < instructions.count {
         var operand = 0
@@ -325,8 +325,8 @@ private func checkBoundaries(instructions: [moss.model.Instruction],
     return .Ok(())
 }
 
-public func decodeMethod(input: String, file: moss.model.ClassFile,
-    methodIndex: Int): Result<[moss.model.Instruction], moss.model.Diagnostic> {
+public func decodeMethod(input: borrowing String, file: borrowing ClassFile,
+    methodIndex: Int): Result<[Instruction], Diagnostic> {
     if file.byteCount != input.count || methodIndex < 0 || methodIndex >= file.methods.count {
         return .Err(diagnostic(code: "jvm.invalid-method-index", offset: 0,
             context: "method", message: "method index or backing input is invalid"))
@@ -345,7 +345,7 @@ public func decodeMethod(input: String, file: moss.model.ClassFile,
             }
             var cursor = bounded(input: input, region: code.bytes, context: "bytecode")?
             let names = opcodeNames()
-            var instructions: [moss.model.Instruction] = []
+            var instructions: [Instruction] = []
             while cursor.position < cursor.end {
                 &instructions.append(element: decodeOne(input: input, cursor: &cursor,
                     code: code, pool: file.pool, names: names, returnType: info.returnType)?)

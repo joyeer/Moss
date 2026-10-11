@@ -8,8 +8,10 @@ bytecode decoder, general I/O library, or cross-platform acceptance claim.
 The sources are [reader.joyeer](../src/binary/reader.joyeer) and
 [input.joyeer](../src/binary/input.joyeer), explicitly registered in
 [module manifest](../src/binary/joyeer.toml). The root
-[workspace](../workspace.toml) includes this member. Consumers write `import moss.binary` and use
-qualified names.
+[workspace](../workspace.toml) includes this member. Consumers write
+`import moss.binary` and use public short names such as `Cursor` and
+`readUnsigned`. Full module qualification remains available for name
+collisions.
 
 ## Ownership and coordinates
 
@@ -40,16 +42,16 @@ arena handles, or a confinement mechanism.
 The types and signatures below are in `moss.binary`:
 
 ```joyeer
-func span(input: String, offset: Int, length: Int, context: String): Result<Span, BinaryError>
-func fullCursor(input: String): Cursor
-func boundedCursor(input: String, region: Span, context: String): Result<Cursor, BinaryError>
-func remaining(input: String, cursor: Cursor, context: String): Result<Int, BinaryError>
-func takeSpan(input: String, cursor: inout Cursor, length: Int, context: String): Result<Span, BinaryError>
-func skip(input: String, cursor: inout Cursor, count: Int, context: String): Result<Void, BinaryError>
-func seek(input: String, cursor: inout Cursor, offset: Int, context: String): Result<Void, BinaryError>
-func readUnsigned(input: String, cursor: inout Cursor, width: Int, context: String): Result<Int, BinaryError>
-func readSigned(input: String, cursor: inout Cursor, width: Int, context: String): Result<Int, BinaryError>
-func readBits64(input: String, cursor: inout Cursor, context: String): Result<Bits64, BinaryError>
+func span(input: borrowing String, offset: Int, length: Int, context: borrowing String): Result<Span, BinaryError>
+func fullCursor(input: borrowing String): Cursor
+func boundedCursor(input: borrowing String, region: borrowing Span, context: borrowing String): Result<Cursor, BinaryError>
+func remaining(input: borrowing String, cursor: borrowing Cursor, context: borrowing String): Result<Int, BinaryError>
+func takeSpan(input: borrowing String, cursor: inout Cursor, length: Int, context: borrowing String): Result<Span, BinaryError>
+func skip(input: borrowing String, cursor: inout Cursor, count: Int, context: borrowing String): Result<Void, BinaryError>
+func seek(input: borrowing String, cursor: inout Cursor, offset: Int, context: borrowing String): Result<Void, BinaryError>
+func readUnsigned(input: borrowing String, cursor: inout Cursor, width: Int, context: borrowing String): Result<Int, BinaryError>
+func readSigned(input: borrowing String, cursor: inout Cursor, width: Int, context: borrowing String): Result<Int, BinaryError>
+func readBits64(input: borrowing String, cursor: inout Cursor, context: borrowing String): Result<Bits64, BinaryError>
 ```
 
 `span` validates its coordinates against the whole input. `boundedCursor`
@@ -96,9 +98,9 @@ For example, this helper reads a four-byte value without owning the input:
 ```joyeer
 import moss.binary
 
-func readMagic(input: String): Result<Int, moss.binary.BinaryError> {
-    var cursor = moss.binary.fullCursor(input: input)
-    return moss.binary.readUnsigned(input: input, cursor: &cursor,
+func readMagic(input: borrowing String): Result<Int, BinaryError> {
+    var cursor = fullCursor(input: input)
+    return readUnsigned(input: input, cursor: &cursor,
         width: 4, context: "class.magic")
 }
 ```

@@ -7,8 +7,8 @@ struct DescriptorInfo {
     let dimensions: Int
 }
 
-private func fieldType(units: [Int], position: inout Int,
-    allowVoid: Bool, offset: Int): Result<DescriptorInfo, moss.model.Diagnostic> {
+private func fieldType(units: borrowing [Int], position: inout Int,
+    allowVoid: Bool, offset: Int): Result<DescriptorInfo, Diagnostic> {
     var dimensions = 0
     while position < units.count && units[position] == 91 {
         dimensions = dimensions + 1
@@ -52,7 +52,7 @@ private func fieldType(units: [Int], position: inout Int,
     return .Ok(DescriptorInfo(parameters: 0, slots: slots, returnType: returnType, dimensions: dimensions))
 }
 
-func descriptor(units: [Int], method: Bool, offset: Int): Result<DescriptorInfo, moss.model.Diagnostic> {
+func descriptor(units: borrowing [Int], method: Bool, offset: Int): Result<DescriptorInfo, Diagnostic> {
     var position = 0
     var parameters = 0
     var slots = 0
@@ -87,7 +87,7 @@ func descriptor(units: [Int], method: Bool, offset: Int): Result<DescriptorInfo,
         returnType: value.returnType, dimensions: value.dimensions))
 }
 
-func validInternalRange(units: [Int], start: Int, end: Int): Bool {
+func validInternalRange(units: borrowing [Int], start: Int, end: Int): Bool {
     if start == end { return false }
     var index = start
     var component = false
@@ -105,9 +105,9 @@ func validInternalRange(units: [Int], start: Int, end: Int): Bool {
     return component
 }
 
-func validName(units: [Int], method: Bool): Bool {
-    if method && (moss.model.unitsEqualAscii(units: units, text: "<init>") ||
-        moss.model.unitsEqualAscii(units: units, text: "<clinit>")) { return true }
+func validName(units: borrowing [Int], method: Bool): Bool {
+    if method && (unitsEqualAscii(units: units, text: "<init>") ||
+        unitsEqualAscii(units: units, text: "<clinit>")) { return true }
     if units.count == 0 { return false }
     var index = 0
     while index < units.count {
@@ -119,8 +119,8 @@ func validName(units: [Int], method: Bool): Bool {
     return true
 }
 
-func classConstant(pool: [moss.model.Constant], index: Int, arrayAllowed: Bool,
-    offset: Int, context: String): Result<Void, moss.model.Diagnostic> {
+func classConstant(pool: borrowing [Constant], index: Int, arrayAllowed: Bool,
+    offset: Int, context: borrowing String): Result<Void, Diagnostic> {
     requireTag(pool: pool, index: index, tag: 7, offset: offset, context: context)?
     let nameIndex = pool[index].first
     requireTag(pool: pool, index: nameIndex, tag: 1, offset: offset, context: context)?

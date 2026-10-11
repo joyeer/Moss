@@ -9,7 +9,7 @@ public func maximumInputBytes(): Int {
     return 16777216
 }
 
-public func inputErrorCode(error: InputError): String {
+public func inputErrorCode(error: borrowing InputError): String {
     return match error {
         .InspectFailed(_, _) => "input.inspect-failed",
         .NotRegular(_, _) => "input.not-regular",
@@ -18,7 +18,7 @@ public func inputErrorCode(error: InputError): String {
     }
 }
 
-public func fileSystemCode(error: FileSystemError): Int {
+public func fileSystemCode(error: borrowing FileSystemError): Int {
     return match error {
         .InvalidPath(code) => code,
         .NotFound(code) => code,
@@ -30,7 +30,7 @@ public func fileSystemCode(error: FileSystemError): Int {
     }
 }
 
-public func inputHostCode(error: InputError): Int? {
+public func inputHostCode(error: borrowing InputError): Int? {
     return match error {
         .InspectFailed(_, host) => .Some(fileSystemCode(error: host)),
         .ReadFailed(_, host) => .Some(fileSystemCode(error: host)),
@@ -39,7 +39,7 @@ public func inputHostCode(error: InputError): Int? {
     }
 }
 
-public func readInput(path: String): Result<String, InputError> {
+public func readInput(path: borrowing String): Result<String, InputError> {
     let kind = match fileKind(path: path) {
         .Ok(value) => value,
         .Err(error) => { return .Err(.InspectFailed(path, error)) },

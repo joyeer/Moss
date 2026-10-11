@@ -24,8 +24,8 @@ public func constantKind(tag: Int): String {
     }
 }
 
-func constantJson(input: String, file: moss.model.ClassFile,
-    index: Int): Result<String, moss.model.Diagnostic> {
+func constantJson(input: borrowing String, file: borrowing ClassFile,
+    index: Int): Result<String, Diagnostic> {
     let item = file.pool[index]
     var text = "null"
     var name = "null"
@@ -59,8 +59,8 @@ func constantJson(input: String, file: moss.model.ClassFile,
         bootstrap = number(value: item.first)
         references = "[" + number(value: item.second) + "]"
     } else if item.tag == 3 || item.tag == 4 || item.tag == 5 || item.tag == 6 {
-        var pattern = moss.model.hex(value: item.first, digits: 8)
-        if item.tag == 5 || item.tag == 6 { pattern = pattern + moss.model.hex(value: item.second, digits: 8) }
+        var pattern = hex(value: item.first, digits: 8)
+        if item.tag == 5 || item.tag == 6 { pattern = pattern + hex(value: item.second, digits: 8) }
         bits = "\"" + pattern + "\""
         if item.tag == 3 {
             var value = item.first
@@ -78,14 +78,14 @@ func constantJson(input: String, file: moss.model.ClassFile,
         ",\"references\":" + references + "}")
 }
 
-func attributeJson(file: moss.model.ClassFile, item: moss.model.Attribute): String {
+func attributeJson(file: borrowing ClassFile, item: borrowing Attribute): String {
     return "{\"name\":" + textAt(file: file, index: item.nameIndex) +
         ",\"nameIndex\":" + number(value: item.nameIndex) +
         ",\"headerOffset\":" + number(value: item.headerOffset) + ",\"body\":" + rangeJson(region: item.body) + "}"
 }
 
-private func attributesJson(file: moss.model.ClassFile,
-    attributes: [moss.model.Attribute]): Result<String, moss.model.Diagnostic> {
+private func attributesJson(file: borrowing ClassFile,
+    attributes: borrowing [Attribute]): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "[")?
     var index = 0
@@ -98,7 +98,7 @@ private func attributesJson(file: moss.model.ClassFile,
     return .Ok(finish(buffer: consume output))
 }
 
-private func codeJson(file: moss.model.ClassFile, code: moss.model.Code): Result<String, moss.model.Diagnostic> {
+private func codeJson(file: borrowing ClassFile, code: borrowing Code): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "{\"attributeOffset\":" + number(value: code.attributeOffset) +
         ",\"maxStack\":" + number(value: code.maxStack) + ",\"maxLocals\":" + number(value: code.maxLocals) +
@@ -139,8 +139,8 @@ private func codeJson(file: moss.model.ClassFile, code: moss.model.Code): Result
     return .Ok(finish(buffer: consume output))
 }
 
-func memberJson(file: moss.model.ClassFile, item: moss.model.Member,
-    method: Bool): Result<String, moss.model.Diagnostic> {
+func memberJson(file: borrowing ClassFile, item: borrowing Member,
+    method: Bool): Result<String, Diagnostic> {
     var code = "null"
     match item.code {
         .Some(value) => { code = codeJson(file: file, code: value)? },
@@ -150,7 +150,7 @@ func memberJson(file: moss.model.ClassFile, item: moss.model.Member,
     var methodIndex = "null"
     var fieldIndex = "null"
     if method {
-        identity = quoteText(text: moss.model.methodId(file: file, method: item))?
+        identity = quoteText(text: methodId(file: file, method: item))?
         methodIndex = number(value: item.index)
     } else {
         fieldIndex = number(value: item.index)
@@ -163,10 +163,10 @@ func memberJson(file: moss.model.ClassFile, item: moss.model.Member,
         ",\"attributes\":" + attributesJson(file: file, attributes: item.attributes)? + "}")
 }
 
-func classJson(file: moss.model.ClassFile): Result<String, moss.model.Diagnostic> {
+func classJson(file: borrowing ClassFile): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "{\"format\":\"jvm-class\",\"name\":" +
-        quoteUnits(units: moss.model.className(file: file)) +
+        quoteUnits(units: className(file: file)) +
         ",\"major\":" + number(value: file.major) + ",\"minor\":" + number(value: file.minor) +
         ",\"preview\":" + boolean(value: file.minor == 65535) +
         ",\"accessFlags\":" + number(value: file.flags) +
@@ -184,7 +184,7 @@ func classJson(file: moss.model.ClassFile): Result<String, moss.model.Diagnostic
     return .Ok(finish(buffer: consume output))
 }
 
-func operandJson(item: moss.model.Operand): String {
+func operandJson(item: borrowing Operand): String {
     return match item {
         .Immediate(value) => "{\"kind\":\"immediate\",\"value\":" + number(value: value) + "}",
         .Local(value) => "{\"kind\":\"local\",\"index\":" + number(value: value) + "}",
@@ -199,8 +199,8 @@ func operandJson(item: moss.model.Operand): String {
     }
 }
 
-func instructionJson(input: String, file: moss.model.ClassFile, artifact: String, method: String,
-    item: moss.model.Instruction): Result<String, moss.model.Diagnostic> {
+func instructionJson(input: borrowing String, file: borrowing ClassFile, artifact: borrowing String, method: borrowing String,
+    item: borrowing Instruction): Result<String, Diagnostic> {
     var output = buffer()
     append(buffer: &output, text: "{\"schemaVersion\":1,\"artifactId\":\"" + artifact +
         "\",\"methodId\":\"" + method + "\",\"methodOffset\":" + number(value: item.methodOffset) +
@@ -208,7 +208,7 @@ func instructionJson(input: String, file: moss.model.ClassFile, artifact: String
         ",\"rawOpcode\":" + number(value: item.rawOpcode) + ",\"effectiveOpcode\":" + number(value: item.opcode) +
         ",\"mnemonic\":\"" + item.mnemonic + "\",\"wide\":" + boolean(value: item.wide) +
         ",\"bytesHex\":\"" + hexRange(input: input,
-            region: moss.model.ByteRange(offset: item.fileOffset, length: item.size))? +
+            region: ByteRange(offset: item.fileOffset, length: item.size))? +
         "\",\"operands\":[")?
     var index = 0
     while index < item.operands.count {

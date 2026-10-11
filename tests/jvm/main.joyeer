@@ -9,7 +9,7 @@ struct State {
     var failures: Int
 }
 
-private func expect(state: inout State, condition: Bool, name: String) {
+private func expect(state: inout State, condition: Bool, name: borrowing String) {
     &state.checks = state.checks + 1
     if !condition {
         &state.failures = state.failures + 1
@@ -17,7 +17,7 @@ private func expect(state: inout State, condition: Bool, name: String) {
     }
 }
 
-private func fixture(name: String): Result<String, String> {
+private func fixture(name: borrowing String): Result<String, String> {
     let tests = match joinPath(base: "tests", path: "fixtures") {
         .Ok(path) => path,
         .Err(_) => { return .Err("cannot locate test fixtures") },
@@ -30,17 +30,17 @@ private func fixture(name: String): Result<String, String> {
         .Ok(value) => value,
         .Err(_) => { return .Err("cannot locate JVM fixture") },
     }
-    return match moss.binary.readInput(path: path) {
+    return match readInput(path: path) {
         .Ok(bytes) => .Ok(bytes),
-        .Err(error) => .Err("fixture acquisition: " + moss.binary.inputErrorCode(error: error)),
+        .Err(error) => .Err("fixture acquisition: " + inputErrorCode(error: error)),
     }
 }
 
-private func load(name: String): Result<moss.model.ClassFile, String> {
+private func load(name: borrowing String): Result<ClassFile, String> {
     let bytes = fixture(name: name)?
-    return match moss.jvm.parseClass(input: bytes, allowPreview: false) {
+    return match parseClass(input: bytes, allowPreview: false) {
         .Ok(file) => .Ok(file),
-        .Err(error) => .Err(error.code + " at " + moss.model.decimal(value: error.offset)),
+        .Err(error) => .Err(error.code + " at " + decimal(value: error.offset)),
     }
 }
 
@@ -54,8 +54,8 @@ private func versions(state: inout State) {
                 expect(state: &state, condition: file.major == majors[index] && file.minor == 0 &&
                     file.methods.count == 10 && file.fields.count == 1 && file.pool.count == 34,
                     name: "classfile version/inventory " + names[index])
-                expect(state: &state, condition: moss.model.unitsEqualAscii(
-                    units: moss.model.className(file: file), text: "Example"),
+                expect(state: &state, condition: unitsEqualAscii(
+                    units: className(file: file), text: "Example"),
                     name: "class internal name " + names[index])
             },
             .Err(message) => expect(state: &state, condition: false, name: message),
@@ -69,50 +69,50 @@ private func versions(state: inout State) {
             return
         },
     }
-    let rejected = match moss.jvm.parseClass(input: preview, allowPreview: false) {
+    let rejected = match parseClass(input: preview, allowPreview: false) {
         .Ok(_) => false,
         .Err(error) => error.code == "jvm.unsupported-version" && error.offset == 4,
     }
     expect(state: &state, condition: rejected, name: "preview is opt-in")
-    let accepted = match moss.jvm.parseClass(input: preview, allowPreview: true) {
+    let accepted = match parseClass(input: preview, allowPreview: true) {
         .Ok(file) => file.minor == 65535 && file.major == 69,
         .Err(_) => false,
     }
     expect(state: &state, condition: accepted, name: "Java 25 preview opt-in")
 }
 
-private func classAndDecode(state: inout State, bytes: String, file: moss.model.ClassFile) {
+private func classAndDecode(state: inout State, bytes: borrowing String, file: borrowing ClassFile) {
     var index = 0
     while index < file.methods.count {
-        match moss.jvm.decodeMethod(input: bytes, file: file, methodIndex: index) {
+        match decodeMethod(input: bytes, file: file, methodIndex: index) {
             .Ok(instructions) => {
                 let hasCode = match file.methods[index].code {
                     .Some(_) => true,
                     .None => false,
                 }
                 expect(state: &state, condition: (instructions.count != 0) == hasCode,
-                    name: "preserved Code presence for method " + moss.model.decimal(value: index))
+                    name: "preserved Code presence for method " + decimal(value: index))
             },
             .Err(error) => expect(state: &state, condition: false, name: error.code),
         }
         index = index + 1
     }
-    let ambiguous = match moss.cli.selectMethod(file: file, name: "sum", type: "") {
+    let ambiguous = match selectMethod(file: file, name: "sum", type: "") {
         .Ok(_) => false,
         .Err(error) => error.code == "query.ambiguous-method",
     }
     expect(state: &state, condition: ambiguous, name: "overloads are not guessed")
-    let exact = match moss.cli.selectMethod(file: file, name: "sum", type: "(II)I") {
+    let exact = match selectMethod(file: file, name: "sum", type: "(II)I") {
         .Ok(value) => value == 1,
         .Err(_) => false,
     }
     expect(state: &state, condition: exact, name: "exact descriptor selects overload")
-    let missing = match moss.cli.selectMethod(file: file, name: "missing", type: "") {
+    let missing = match selectMethod(file: file, name: "missing", type: "") {
         .Ok(_) => false,
         .Err(error) => error.code == "query.method-not-found",
     }
     expect(state: &state, condition: missing, name: "missing method is explicit")
-    let instructions = match moss.jvm.decodeMethod(input: bytes, file: file, methodIndex: 3) {
+    let instructions = match decodeMethod(input: bytes, file: file, methodIndex: 3) {
         .Ok(value) => value,
         .Err(error) => {
             expect(state: &state, condition: false, name: error.code)
@@ -128,18 +128,18 @@ private func classAndDecode(state: inout State, bytes: String, file: moss.model.
     expect(state: &state, condition: instructions[2].rawOpcode == 196 &&
         instructions[2].opcode == 132 && instructions[2].size == 6 && instructions[2].wide && increment,
         name: "wide iinc retains 16-bit signed increment")
-    let page = match moss.cli.instructionPage(instructions: instructions, codeLength: 18, offset: 3, limit: 2) {
+    let page = match instructionPage(instructions: instructions, codeLength: 18, offset: 3, limit: 2) {
         .Ok(value) => value.first == 1 && value.end == 3 &&
             match value.nextOffset { .Some(next) => next == 13, .None => false },
         .Err(_) => false,
     }
     expect(state: &state, condition: page, name: "page continuation is a byte offset")
-    let inside = match moss.cli.instructionPage(instructions: instructions, codeLength: 18, offset: 4, limit: 2) {
+    let inside = match instructionPage(instructions: instructions, codeLength: 18, offset: 4, limit: 2) {
         .Ok(_) => false,
         .Err(error) => error.code == "query.invalid-offset",
     }
     expect(state: &state, condition: inside, name: "operand-byte offset is rejected")
-    let eof = match moss.cli.instructionPage(instructions: instructions, codeLength: 18, offset: 18, limit: 2) {
+    let eof = match instructionPage(instructions: instructions, codeLength: 18, offset: 18, limit: 2) {
         .Ok(value) => value.first == 5 && value.end == 5 &&
             match value.nextOffset { .Some(_) => false, .None => true },
         .Err(_) => false,
@@ -152,19 +152,19 @@ private func classAndDecode(state: inout State, bytes: String, file: moss.model.
     }
 }
 
-private func truncations(state: inout State, bytes: String) {
+private func truncations(state: inout State, bytes: borrowing String) {
     var prefix = ""
     var index = 0
     while index < bytes.count {
-        let rejected = match moss.jvm.parseClass(input: prefix, allowPreview: false) {
+        let rejected = match parseClass(input: prefix, allowPreview: false) {
             .Ok(_) => false,
             .Err(error) => error.code.count != 0 && error.context.count != 0 && error.offset >= 0,
         }
-        expect(state: &state, condition: rejected, name: "class truncation " + moss.model.decimal(value: index))
+        expect(state: &state, condition: rejected, name: "class truncation " + decimal(value: index))
         prefix = prefix + byteToString(value: bytes[index])
         index = index + 1
     }
-    let trailing = match moss.jvm.parseClass(input: bytes + "\0", allowPreview: false) {
+    let trailing = match parseClass(input: bytes + "\0", allowPreview: false) {
         .Ok(_) => false,
         .Err(error) => error.code == "jvm.trailing-bytes" && error.offset == bytes.count,
     }
@@ -194,7 +194,7 @@ private func constants(state: inout State) {
             index = 0
             while index < tags.count {
                 expect(state: &state, condition: seen[tags[index]],
-                    name: "constant tag " + moss.model.decimal(value: tags[index]))
+                    name: "constant tag " + decimal(value: tags[index]))
                 index = index + 1
             }
         },
@@ -208,36 +208,36 @@ private func constants(state: inout State) {
 }
 
 private func outputBudget(state: inout State) {
-    expect(state: &state, condition: moss.output.quoteUnits(units: [0, 34, 92, 55296, 20013]) ==
+    expect(state: &state, condition: quoteUnits(units: [0, 34, 92, 55296, 20013]) ==
         "\"\\u0000\\\"\\\\\\ud800\\u4e2d\"", name: "lossless JSON code-unit escaping")
-    let invalidText = match moss.model.utf8Units(text: "\0") {
+    let invalidText = match utf8Units(text: "\0") {
         .Ok(units) => units.count == 1 && units[0] == 0,
         .Err(_) => false,
     }
     expect(state: &state, condition: invalidText, name: "UTF-8 decoding preserves NUL")
     var block = "X"
     while block.count < 1048576 { block = block + block }
-    var output = moss.output.buffer()
+    var output = buffer()
     var index = 0
     while index < 8 {
-        let appended = match moss.output.append(buffer: &output, text: block) {
+        let appended = match append(buffer: &output, text: block) {
             .Ok(_) => true,
             .Err(_) => false,
         }
         expect(state: &state, condition: appended, name: "bounded output append")
         index = index + 1
     }
-    let rejected = match moss.output.append(buffer: &output, text: "X") {
+    let rejected = match append(buffer: &output, text: "X") {
         .Ok(_) => false,
         .Err(error) => error.code == "output.budget-exceeded",
     }
     expect(state: &state, condition: rejected && output.bytes == 8388608 && output.parts.count == 8,
         name: "exact 8 MiB accepted; one extra byte fails atomically")
-    let contents = moss.output.finish(buffer: consume output)
+    let contents = finish(buffer: consume output)
     expect(state: &state, condition: contents.count == 8388608, name: "balanced output assembly preserves bytes")
 }
 
-private func digits(units: [Int], start: Int, end: Int): Int {
+private func digits(units: borrowing [Int], start: Int, end: Int): Int {
     var value = 0
     var index = start
     while index < end {
@@ -255,7 +255,7 @@ private func opcodeMatrix(state: inout State) {
             return
         },
     }
-    let file = match moss.jvm.parseClass(input: bytes, allowPreview: false) {
+    let file = match parseClass(input: bytes, allowPreview: false) {
         .Ok(value) => value,
         .Err(error) => {
             expect(state: &state, condition: false, name: error.code)
@@ -278,19 +278,19 @@ private func opcodeMatrix(state: inout State) {
             opcode = digits(units: name, start: 5, end: 8)
             selected = name[name.count - 1] - 48
         }
-        match moss.jvm.decodeMethod(input: bytes, file: file, methodIndex: index) {
+        match decodeMethod(input: bytes, file: file, methodIndex: index) {
             .Ok(instructions) => {
                 expect(state: &state, condition: selected < instructions.count,
-                    name: "opcode record exists " + moss.model.decimal(value: index))
+                    name: "opcode record exists " + decimal(value: index))
                 if selected < instructions.count {
                     let item = instructions[selected]
                     var raw = opcode
                     if wide { raw = 196 }
                     expect(state: &state, condition: item.opcode == opcode && item.rawOpcode == raw &&
                         item.wide == wide && item.methodOffset == selected,
-                        name: "opcode/offset/wide identity " + moss.model.decimal(value: index))
-                    let encoded = match moss.output.hexRange(input: bytes,
-                        region: moss.model.ByteRange(offset: item.fileOffset, length: item.size)) {
+                        name: "opcode/offset/wide identity " + decimal(value: index))
+                    let encoded = match hexRange(input: bytes,
+                        region: ByteRange(offset: item.fileOffset, length: item.size)) {
                         .Ok(text) => text.count == item.size * 2 &&
                             byteToInt(value: bytes[item.fileOffset]) == raw,
                         .Err(_) => false,
@@ -307,13 +307,13 @@ private func opcodeMatrix(state: inout State) {
                 }
             },
             .Err(error) => expect(state: &state, condition: false, name: error.code +
-                " opcode " + moss.model.decimal(value: opcode)),
+                " opcode " + decimal(value: opcode)),
         }
         index = index + 1
     }
 }
 
-func main(args: [String]): Int {
+func main(args: borrowing [String]): Int {
     if args.count != 0 {
         print(value: "moss-jvm-tests: no arguments are accepted")
         return 1
@@ -327,7 +327,7 @@ func main(args: [String]): Int {
             return 1
         },
     }
-    match moss.jvm.parseClass(input: bytes, allowPreview: false) {
+    match parseClass(input: bytes, allowPreview: false) {
         .Ok(file) => classAndDecode(state: &state, bytes: bytes, file: file),
         .Err(error) => expect(state: &state, condition: false, name: error.code),
     }
@@ -336,10 +336,10 @@ func main(args: [String]): Int {
     opcodeMatrix(state: &state)
     outputBudget(state: &state)
     if state.failures != 0 {
-        print(value: "moss-jvm-tests: " + moss.model.decimal(value: state.failures) +
-            " failures in " + moss.model.decimal(value: state.checks) + " checks")
+        print(value: "moss-jvm-tests: " + decimal(value: state.failures) +
+            " failures in " + decimal(value: state.checks) + " checks")
         return 1
     }
-    print(value: "moss-jvm-tests: " + moss.model.decimal(value: state.checks) + " checks passed")
+    print(value: "moss-jvm-tests: " + decimal(value: state.checks) + " checks passed")
     return 0
 }

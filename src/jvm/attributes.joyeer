@@ -1,11 +1,11 @@
 import moss.binary
 import moss.model
 
-func readAttributes(input: String, cursor: inout moss.binary.Cursor,
-    pool: [moss.model.Constant], budget: inout ParseBudget): Result<[moss.model.Attribute], moss.model.Diagnostic> {
+func readAttributes(input: borrowing String, cursor: inout Cursor,
+    pool: borrowing [Constant], budget: inout ParseBudget): Result<[Attribute], Diagnostic> {
     let count = count16(input: input, cursor: &cursor, minimumBytes: 6,
         budget: &budget, context: "attributes_count")?
-    var attributes: [moss.model.Attribute] = []
+    var attributes: [Attribute] = []
     var index = 0
     while index < count {
         let start = cursor.position
@@ -13,14 +13,14 @@ func readAttributes(input: String, cursor: inout moss.binary.Cursor,
         requireTag(pool: pool, index: name, tag: 1, offset: start, context: "attribute name")?
         let length = u(input: input, cursor: &cursor, width: 4, context: "attribute.length")?
         let body = take(input: input, cursor: &cursor, length: length, context: "attribute body")?
-        &attributes.append(element: moss.model.Attribute(nameIndex: name, headerOffset: start, body: body))
+        &attributes.append(element: Attribute(nameIndex: name, headerOffset: start, body: body))
         index = index + 1
     }
     return .Ok(attributes)
 }
 
-private func readLines(input: String, attribute: moss.model.Attribute, codeLength: Int,
-    lines: inout [moss.model.LineNumber], budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+private func readLines(input: borrowing String, attribute: borrowing Attribute, codeLength: Int,
+    lines: inout [LineNumber], budget: inout ParseBudget): Result<Void, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "LineNumberTable")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 4,
         budget: &budget, context: "LineNumberTable.count")?
@@ -33,15 +33,15 @@ private func readLines(input: String, attribute: moss.model.Attribute, codeLengt
             return .Err(diagnostic(code: "jvm.invalid-debug-range", offset: start,
                 context: "LineNumberTable", message: "line starts outside method code"))
         }
-        &lines.append(element: moss.model.LineNumber(offset: pc, line: line, fileOffset: start))
+        &lines.append(element: LineNumber(offset: pc, line: line, fileOffset: start))
         index = index + 1
     }
     return finished(cursor: cursor, context: "LineNumberTable")
 }
 
-private func readLocals(input: String, attribute: moss.model.Attribute,
-    pool: [moss.model.Constant], codeLength: Int, maxLocals: Int, generic: Bool,
-    locals: inout [moss.model.LocalVariable], budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+private func readLocals(input: borrowing String, attribute: borrowing Attribute,
+    pool: borrowing [Constant], codeLength: Int, maxLocals: Int, generic: Bool,
+    locals: inout [LocalVariable], budget: inout ParseBudget): Result<Void, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "local variables")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 10,
         budget: &budget, context: "local variables count")?
@@ -65,15 +65,15 @@ private func readLocals(input: String, attribute: moss.model.Attribute,
             return .Err(diagnostic(code: "jvm.invalid-debug-range", offset: start,
                 context: "local variables", message: "local range or slot is outside method bounds"))
         }
-        &locals.append(element: moss.model.LocalVariable(start: pc, length: length, slot: slot,
+        &locals.append(element: LocalVariable(start: pc, length: length, slot: slot,
             nameIndex: nameIndex, descriptorIndex: typeIndex, generic: generic, fileOffset: start))
         index = index + 1
     }
     return finished(cursor: cursor, context: "local variables")
 }
 
-func readCode(input: String, attribute: moss.model.Attribute, pool: [moss.model.Constant],
-    parameterSlots: Int, budget: inout ParseBudget): Result<moss.model.Code, moss.model.Diagnostic> {
+func readCode(input: borrowing String, attribute: borrowing Attribute, pool: borrowing [Constant],
+    parameterSlots: Int, budget: inout ParseBudget): Result<Code, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "Code")?
     let maxStack = u(input: input, cursor: &cursor, width: 2, context: "Code.max_stack")?
     let maxLocals = u(input: input, cursor: &cursor, width: 2, context: "Code.max_locals")?
@@ -89,7 +89,7 @@ func readCode(input: String, attribute: moss.model.Attribute, pool: [moss.model.
     let bytes = take(input: input, cursor: &cursor, length: length, context: "Code.bytes")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 8,
         budget: &budget, context: "Code.exception_table_length")?
-    var exceptions: [moss.model.ExceptionRegion] = []
+    var exceptions: [ExceptionRegion] = []
     var index = 0
     while index < count {
         let start = cursor.position
@@ -105,14 +105,14 @@ func readCode(input: String, attribute: moss.model.Attribute, pool: [moss.model.
             classConstant(pool: pool, index: catchType, arrayAllowed: false,
                 offset: start + 6, context: "exception.catch_type")?
         }
-        &exceptions.append(element: moss.model.ExceptionRegion(start: from, end: end,
+        &exceptions.append(element: ExceptionRegion(start: from, end: end,
             handler: handler, catchType: catchType, fileOffset: start))
         index = index + 1
     }
     let attributes = readAttributes(input: input, cursor: &cursor, pool: pool, budget: &budget)?
     finished(cursor: cursor, context: "Code")?
-    var lines: [moss.model.LineNumber] = []
-    var locals: [moss.model.LocalVariable] = []
+    var lines: [LineNumber] = []
+    var locals: [LocalVariable] = []
     index = 0
     while index < attributes.count {
         if named(pool: pool, index: attributes[index].nameIndex, name: "LineNumberTable") {
@@ -126,13 +126,13 @@ func readCode(input: String, attribute: moss.model.Attribute, pool: [moss.model.
         }
         index = index + 1
     }
-    return .Ok(moss.model.Code(attributeOffset: attribute.headerOffset, maxStack: maxStack,
+    return .Ok(Code(attributeOffset: attribute.headerOffset, maxStack: maxStack,
         maxLocals: maxLocals, bytes: bytes, exceptions: exceptions,
         attributes: attributes, lines: lines, locals: locals))
 }
 
-func checkExceptions(input: String, attribute: moss.model.Attribute, pool: [moss.model.Constant],
-    budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+func checkExceptions(input: borrowing String, attribute: borrowing Attribute, pool: borrowing [Constant],
+    budget: inout ParseBudget): Result<Void, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "Exceptions")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 2, budget: &budget, context: "Exceptions")?
     var index = 0
@@ -145,8 +145,8 @@ func checkExceptions(input: String, attribute: moss.model.Attribute, pool: [moss
     return finished(cursor: cursor, context: "Exceptions")
 }
 
-func readBootstraps(input: String, attribute: moss.model.Attribute, pool: [moss.model.Constant],
-    budget: inout ParseBudget): Result<Int, moss.model.Diagnostic> {
+func readBootstraps(input: borrowing String, attribute: borrowing Attribute, pool: borrowing [Constant],
+    budget: inout ParseBudget): Result<Int, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "BootstrapMethods")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 4,
         budget: &budget, context: "BootstrapMethods.count")?
@@ -180,8 +180,8 @@ func readBootstraps(input: String, attribute: moss.model.Attribute, pool: [moss.
     return .Ok(count)
 }
 
-private func moduleTargets(input: String, cursor: inout moss.binary.Cursor,
-    pool: [moss.model.Constant], budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+private func moduleTargets(input: borrowing String, cursor: inout Cursor,
+    pool: borrowing [Constant], budget: inout ParseBudget): Result<Void, Diagnostic> {
     let count = count16(input: input, cursor: &cursor, minimumBytes: 2,
         budget: &budget, context: "Module.target_count")?
     var index = 0
@@ -194,8 +194,8 @@ private func moduleTargets(input: String, cursor: inout moss.binary.Cursor,
     return .Ok(())
 }
 
-func checkModule(input: String, attribute: moss.model.Attribute, pool: [moss.model.Constant],
-    budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+func checkModule(input: borrowing String, attribute: borrowing Attribute, pool: borrowing [Constant],
+    budget: inout ParseBudget): Result<Void, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "Module")?
     let module = u(input: input, cursor: &cursor, width: 2, context: "Module.name")?
     requireTag(pool: pool, index: module, tag: 19, offset: attribute.body.offset, context: "Module.name")?
@@ -267,8 +267,8 @@ func checkModule(input: String, attribute: moss.model.Attribute, pool: [moss.mod
     return finished(cursor: cursor, context: "Module")
 }
 
-func checkModulePackages(input: String, attribute: moss.model.Attribute, pool: [moss.model.Constant],
-    budget: inout ParseBudget): Result<Void, moss.model.Diagnostic> {
+func checkModulePackages(input: borrowing String, attribute: borrowing Attribute, pool: borrowing [Constant],
+    budget: inout ParseBudget): Result<Void, Diagnostic> {
     var cursor = bounded(input: input, region: attribute.body, context: "ModulePackages")?
     let count = count16(input: input, cursor: &cursor, minimumBytes: 2,
         budget: &budget, context: "ModulePackages.count")?

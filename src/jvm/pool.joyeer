@@ -1,7 +1,7 @@
 import moss.binary
 import moss.model
 
-private func modifiedUtf8(input: String, region: moss.model.ByteRange): Result<[Int], moss.model.Diagnostic> {
+private func modifiedUtf8(input: borrowing String, region: borrowing ByteRange): Result<[Int], Diagnostic> {
     var cursor = bounded(input: input, region: region, context: "CONSTANT_Utf8")?
     var units: [Int] = []
     while cursor.position < cursor.end {
@@ -43,16 +43,16 @@ private func modifiedUtf8(input: String, region: moss.model.ByteRange): Result<[
     return .Ok(units)
 }
 
-func readPool(input: String, cursor: inout moss.binary.Cursor, major: Int,
-    budget: inout ParseBudget): Result<[moss.model.Constant], moss.model.Diagnostic> {
+func readPool(input: borrowing String, cursor: inout Cursor, major: Int,
+    budget: inout ParseBudget): Result<[Constant], Diagnostic> {
     let count = u(input: input, cursor: &cursor, width: 2, context: "constant_pool_count")?
     if count == 0 {
         return .Err(diagnostic(code: "jvm.invalid-constant-count", offset: cursor.position - 2,
             context: "constant_pool", message: "count must include the unused zero index"))
     }
     charge(budget: &budget, count: count, offset: cursor.position - 2)?
-    var pool: [moss.model.Constant] = [
-        moss.model.Constant(index: 0, tag: 0, bytes: moss.model.ByteRange(offset: 8, length: 0),
+    var pool: [Constant] = [
+        Constant(index: 0, tag: 0, bytes: ByteRange(offset: 8, length: 0),
             first: 0, second: 0, text: []),
     ]
     var index = 1
@@ -101,13 +101,13 @@ func readPool(input: String, cursor: inout moss.binary.Cursor, major: Int,
             return .Err(diagnostic(code: "jvm.unsupported-constant-tag", offset: start,
                 context: "constant_pool", message: "unknown constant pool tag"))
         }
-        &pool.append(element: moss.model.Constant(index: index, tag: tag,
-            bytes: moss.model.ByteRange(offset: start, length: cursor.position - start),
+        &pool.append(element: Constant(index: index, tag: tag,
+            bytes: ByteRange(offset: start, length: cursor.position - start),
             first: first, second: second, text: text))
         index = index + 1
         if tag == 5 || tag == 6 {
-            &pool.append(element: moss.model.Constant(index: index, tag: 0,
-                bytes: moss.model.ByteRange(offset: start, length: 0), first: 0, second: 0, text: []))
+            &pool.append(element: Constant(index: index, tag: 0,
+                bytes: ByteRange(offset: start, length: 0), first: 0, second: 0, text: []))
             index = index + 1
         }
     }
@@ -115,8 +115,8 @@ func readPool(input: String, cursor: inout moss.binary.Cursor, major: Int,
     return .Ok(pool)
 }
 
-private func validateNameAndType(pool: [moss.model.Constant], index: Int, method: Bool,
-    offset: Int): Result<Void, moss.model.Diagnostic> {
+private func validateNameAndType(pool: borrowing [Constant], index: Int, method: Bool,
+    offset: Int): Result<Void, Diagnostic> {
     requireTag(pool: pool, index: index, tag: 12, offset: offset, context: "NameAndType")?
     let name = utf8(pool: pool, index: pool[index].first, offset: offset, context: "name")?
     if !validName(units: name, method: method) {
@@ -125,14 +125,14 @@ private func validateNameAndType(pool: [moss.model.Constant], index: Int, method
     }
     let type = utf8(pool: pool, index: pool[index].second, offset: offset, context: "descriptor")?
     let info = descriptor(units: type, method: method, offset: offset)?
-    if method && moss.model.unitsEqualAscii(units: name, text: "<init>") && info.returnType != 86 {
+    if method && unitsEqualAscii(units: name, text: "<init>") && info.returnType != 86 {
         return .Err(diagnostic(code: "jvm.invalid-descriptor", offset: offset,
             context: "<init>", message: "constructor return type must be void"))
     }
     return .Ok(())
 }
 
-func validatePool(pool: [moss.model.Constant]): Result<Void, moss.model.Diagnostic> {
+func validatePool(pool: borrowing [Constant]): Result<Void, Diagnostic> {
     var index = 1
     while index < pool.count {
         let tag = pool[index].tag

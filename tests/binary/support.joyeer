@@ -20,7 +20,7 @@ func decimal(value: Int): String {
     return text
 }
 
-func expect(state: inout TestState, condition: Bool, name: String) {
+func expect(state: inout TestState, condition: Bool, name: borrowing String) {
     &state.checks = state.checks + 1
     if !condition {
         &state.failures = state.failures + 1
@@ -28,7 +28,7 @@ func expect(state: inout TestState, condition: Bool, name: String) {
     }
 }
 
-func fixtureBytes(octets: String, values: [Int]): String {
+func fixtureBytes(octets: borrowing String, values: borrowing [Int]): String {
     var bytes = ""
     var index = 0
     while index < values.count {
@@ -38,25 +38,25 @@ func fixtureBytes(octets: String, values: [Int]): String {
     return bytes
 }
 
-func integerEquals(outcome: Result<Int, moss.binary.BinaryError>, expected: Int): Bool {
+func integerEquals(outcome: borrowing Result<Int, BinaryError>, expected: Int): Bool {
     return match outcome {
         .Ok(value) => value == expected,
         .Err(error) => {
-            print(value: "unexpected reader error: " + moss.binary.binaryErrorCode(error: error) +
+            print(value: "unexpected reader error: " + binaryErrorCode(error: error) +
                 " at " + decimal(value: error.offset) + " in " + error.context)
             return false
         },
     }
 }
 
-func errorMatches(error: moss.binary.BinaryError, code: String, offset: Int,
-    requested: Int, available: Int, context: String): Bool {
-    return moss.binary.binaryErrorCode(error: error) == code &&
+func errorMatches(error: borrowing BinaryError, code: borrowing String, offset: Int,
+    requested: Int, available: Int, context: borrowing String): Bool {
+    return binaryErrorCode(error: error) == code &&
         error.offset == offset && error.requested == requested &&
         error.available == available && error.context == context
 }
 
-func integerError(outcome: Result<Int, moss.binary.BinaryError>, code: String,
+func integerError(outcome: borrowing Result<Int, BinaryError>, code: borrowing String,
     offset: Int, requested: Int, available: Int): Bool {
     return match outcome {
         .Ok(_) => false,

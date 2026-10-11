@@ -1,7 +1,7 @@
 import moss.cli
 
-private func isHelp(args: [String]): Bool {
-    return match moss.cli.parse(args: args) {
+private func isHelp(args: borrowing [String]): Bool {
+    return match parse(args: args) {
         .Ok(command) => match command {
             .Help => true,
             .Version => false,
@@ -11,8 +11,8 @@ private func isHelp(args: [String]): Bool {
     }
 }
 
-private func isVersion(args: [String]): Bool {
-    return match moss.cli.parse(args: args) {
+private func isVersion(args: borrowing [String]): Bool {
+    return match parse(args: args) {
         .Ok(command) => match command {
             .Help => false,
             .Version => true,
@@ -22,19 +22,19 @@ private func isVersion(args: [String]): Bool {
     }
 }
 
-private func isRejected(args: [String]): Bool {
-    return match moss.cli.parse(args: args) {
+private func isRejected(args: borrowing [String]): Bool {
+    return match parse(args: args) {
         .Ok(_) => false,
         .Err(error) => error.message.count != 0 && error.code == "cli.usage",
     }
 }
 
-private func failed(name: String): Int {
+private func failed(name: borrowing String): Int {
     print(value: "FAIL: " + name)
     return 1
 }
 
-func main(args: [String]): Int {
+func main(args: borrowing [String]): Int {
     if args.count != 0 { return failed(name: "test runner expects no arguments") }
     if !isHelp(args: []) { return failed(name: "empty arguments show help") }
     if !isHelp(args: ["--help"]) { return failed(name: "explicit help") }
@@ -44,10 +44,10 @@ func main(args: [String]): Int {
     if !isRejected(args: [""]) { return failed(name: "empty argument") }
     if !isRejected(args: ["--help", "extra"]) { return failed(name: "help used alone") }
     if !isRejected(args: ["--version", "extra"]) { return failed(name: "version used alone") }
-    if moss.cli.versionText() != "moss 0.1.0 (JVM disassembler)" {
+    if versionText() != "moss 0.1.0 (JVM disassembler)" {
         return failed(name: "version identifies current capabilities")
     }
-    if moss.cli.helpText().count == 0 { return failed(name: "help is nonempty") }
+    if helpText().count == 0 { return failed(name: "help is nonempty") }
     print(value: "moss-tests: 10 checks passed")
     return 0
 }

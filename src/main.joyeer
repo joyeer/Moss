@@ -2,9 +2,9 @@ import moss.cli
 import moss.model
 import moss.binary
 
-private func failure(error: moss.model.Diagnostic, status: Int): Int {
+private func failure(error: borrowing Diagnostic, status: Int): Int {
     var location = ""
-    if error.offset >= 0 { location = " at byte " + moss.model.decimal(value: error.offset) }
+    if error.offset >= 0 { location = " at byte " + decimal(value: error.offset) }
     return match writeStderr(contents: "moss: " + error.code + location + " [" +
         error.context + "]: " + error.message + "\n") {
         .Ok(_) => status,
@@ -12,18 +12,18 @@ private func failure(error: moss.model.Diagnostic, status: Int): Int {
     }
 }
 
-private func writeOutput(path: String, contents: String): Int {
+private func writeOutput(path: borrowing String, contents: borrowing String): Int {
     return match writeFileNew(path: path, contents: contents + "\n") {
         .Ok(_) => 0,
-        .Err(error) => failure(error: moss.model.Diagnostic(code: "output.write-failed", offset: -1,
+        .Err(error) => failure(error: Diagnostic(code: "output.write-failed", offset: -1,
             context: "output", message: "cannot write new output file '" + path +
-            "' (native code " + moss.model.decimal(value: moss.binary.fileSystemCode(error: error)) +
+            "' (native code " + decimal(value: fileSystemCode(error: error)) +
             "); existing files are never replaced and failed writes may leave a partial file"), status: 1),
     }
 }
 
-private func execute(options: moss.cli.Options): Int {
-    let contents = match moss.cli.analyze(options: options) {
+private func execute(options: borrowing Options): Int {
+    let contents = match analyze(options: options) {
         .Ok(text) => text,
         .Err(error) => { return failure(error: error, status: 1) },
     }
@@ -38,15 +38,15 @@ private func execute(options: moss.cli.Options): Int {
     return 0
 }
 
-func main(args: [String]): Int {
-    return match moss.cli.parse(args: args) {
+func main(args: borrowing [String]): Int {
+    return match parse(args: args) {
         .Ok(command) => match command {
             .Help => {
-                print(value: moss.cli.helpText())
+                print(value: helpText())
                 return 0
             },
             .Version => {
-                print(value: moss.cli.versionText())
+                print(value: versionText())
                 return 0
             },
             .Analyze(options) => execute(options: options),

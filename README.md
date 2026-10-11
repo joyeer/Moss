@@ -76,8 +76,10 @@ is for human inspection; JSON/NDJSON stdout requires `--unchecked-stdout`
 and emits a warning on stderr. An automation success guarantee requires
 `--output`, not the experimental pipe mode.
 
-Compiler paths are explicit, not stored in the manifest. Use a matching
-native toolchain on another machine; see the upstream
+Compiler paths are explicit, not stored in the manifest. Moss requires a
+Joyeer compiler with public short-name import support. Update a local compiler
+installation after rebuilding Joyeer. Use a matching native toolchain on
+another machine; see the upstream
 [building guide](../joyeer-lang/docs/building.md).
 
 The project uses joypm 0.1.0: [workspace.toml](workspace.toml) lists nine
@@ -109,6 +111,16 @@ See [joypm](../joyeer-lang/docs/impl/joypm.md).
 All product code is Joyeer. The existing
 [Swift Moss engine](../decompify/Packages/Moss) is reference material, not a
 runtime or build dependency.
+
+Source files import dependencies explicitly and use public short names for
+types, constructors, and functions. Full module qualification is reserved for
+ambiguity or intentional local shadowing; imports remain file-local.
+
+Read-only string, container, and aggregate parameters explicitly declare
+`borrowing`. This is equivalent to Joyeer's implicit default: callers retain
+ownership, and argument passing does not deep-copy the input. Scalar
+parameters keep the default spelling; mutation and ownership transfer use
+`inout` and `consuming`, respectively.
 
 ## Validation
 
@@ -148,6 +160,16 @@ ordinary joypm native suites do not require Node or a JDK.
 The module/workspace configuration migration preserves the same product
 sources and test fixtures. With the updated joypm 0.1.0, all nine members check and
 Debug/Release native tests retain the same 2158 checks per profile.
+
+On 2026-10-11, the short-name source migration passed all nine module checks
+using Joyeer revision `901a4e3`. Native Windows ARM64 Debug and Release each
+passed the same 2158 native checks and 678 process integration checks.
+Imports, module identities, fixtures, CLI behavior, and output schemas are
+unchanged.
+
+The explicit non-scalar `borrowing` annotations were also checked across all
+nine modules and retained the same Debug/Release native and process results.
+They clarify existing access effects without changing ownership behavior.
 
 No JDK was found in this environment, so the optional gate is **not executed**:
 
